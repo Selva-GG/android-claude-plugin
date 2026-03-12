@@ -1,6 +1,7 @@
 ---
 name: jira-fetching
 description: Use when fetching Jira task details, reading ticket descriptions, checking acceptance criteria, validating task readiness, or needing context about a Jira issue before implementation
+user-invocable: false
 ---
 
 # Fetching Jira Task Details

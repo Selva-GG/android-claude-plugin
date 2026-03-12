@@ -1,6 +1,7 @@
 ---
 name: jira-worklogging
 description: Use when logging work time to a Jira ticket — adding hours spent, viewing existing worklogs, adding work descriptions, tracking time after completing a task
+user-invocable: false
 ---
 
 # Logging Work Time

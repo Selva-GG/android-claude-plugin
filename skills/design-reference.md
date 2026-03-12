@@ -1,6 +1,7 @@
 ---
 name: design-reference
 description: Use when a Jira ticket has Figma links, design screenshots, or UI mockups — opens designs via browser, captures screenshots, maintains design context during implementation, and compares implementation against design during review
+user-invocable: false
 ---
 
 # Design Reference

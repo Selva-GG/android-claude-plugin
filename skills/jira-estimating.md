@@ -1,6 +1,7 @@
 ---
 name: jira-estimating
 description: Use when reviewing or updating a Jira ticket's time estimate or story points — checking accuracy, comparing with time spent, updating based on task complexity
+user-invocable: false
 ---
 
 # Reviewing & Updating Time Estimates

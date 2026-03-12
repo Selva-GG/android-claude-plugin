@@ -1,6 +1,7 @@
 ---
 name: verifying-build
 description: Use when verifying that code changes compile, tests pass, and lint checks succeed — before creating a PR, after fixing a bug, or at any point to validate code health. Works with any project type by reading build commands from CLAUDE.md
+user-invocable: false
 ---
 
 # Verifying Build, Tests, and Lint

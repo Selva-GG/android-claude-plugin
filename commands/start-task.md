@@ -122,80 +122,11 @@ git fetch origin <base-branch>
 git checkout -b <branch-name> origin/<base-branch>
 ```
 
-## Step 7: Discover Project Procedures
+## Step 7: Load Project Procedures
 
-### 7a: Collect all procedure files
+**REQUIRED:** Use the `android:android-procedures` skill.
 
-Walk up from the current working directory to the project root (stop at filesystem root or home directory). At **each level**, check for procedure files:
-
-```
-Check: <current-dir>/.claude/skills/procedures.md
-Check: <current-dir>/.claude/skills/procedures-*.md    (e.g., procedures-android.md, procedures-ios.md)
-Check: <parent-dir>/.claude/skills/procedures.md
-Check: <parent-dir>/.claude/skills/procedures-*.md
-... (continue up)
-```
-
-Collect ALL matches into a list, ordered from most specific (deepest directory) to most general (highest directory).
-
-**Example — monorepo with Android + iOS:**
-```
-Found:
-1. meApp/Android/.claude/skills/procedures.md          → "Android — MVI, Kotlin, Jetpack Compose"
-2. meApp/iOS/.claude/skills/procedures.md              → "iOS — MVVM, Swift, SwiftUI"
-3. meApp/.claude/skills/procedures.md                  → "Shared — monorepo conventions"
-```
-
-**Example — project with multiple procedure files at one level:**
-```
-Found:
-1. myproject/.claude/skills/procedures-backend.md      → "Backend — Rails, PostgreSQL"
-2. myproject/.claude/skills/procedures-frontend.md     → "Frontend — React, TypeScript"
-3. myproject/.claude/skills/procedures.md              → "Shared — CI, code style"
-```
-
-### 7b: Select which procedures to use
-
-**If exactly 1 file found:** Load it automatically. Present summary:
-
-> **Project procedures loaded:** `[path]`
-> - Project type: [from procedures.md header]
-> - Architecture: [key pattern, e.g., MVI, MVVM]
-> - Key conventions: [top 3 bullet points]
-
-**If multiple files found:** **ALWAYS ask the user. Never auto-select. Never recommend. Never assume based on working directory.** Present all options equally and wait for the user to decide:
-
-> **Multiple procedure files found:**
->
-> | # | Path | Type | Architecture |
-> |---|------|------|-------------|
-> | 1 | `Android/.claude/skills/procedures.md` | Android | MVI, Kotlin, Jetpack Compose |
-> | 2 | `iOS/.claude/skills/procedures.md` | iOS | MVVM, Swift, SwiftUI |
->
-> Which procedures should I follow? (number, or multiple like "1,2")
-
-- **Single selection** (e.g., "1") → load that file only
-- **Multiple selection** (e.g., "1,2") → load all selected, most specific first. If conventions conflict, the more specific file wins.
-- **Do not proceed until user responds.**
-
-### 7c: Load and parse selected procedures
-
-For each selected file:
-1. Read the file contents
-2. Extract the **name** from frontmatter or first heading
-3. Extract key sections: architecture pattern, conventions, review checklist, build commands, testing guide
-4. If multiple files selected, merge:
-   - **Non-conflicting sections** → combine (e.g., both have review checklists → merge items)
-   - **Conflicting conventions** → most specific file (deepest directory) wins
-   - Present a merged summary showing which file each convention comes from
-
-**If NO files found:**
-> No project-specific procedures found.
-> Looked for `.claude/skills/procedures.md` or `.claude/skills/procedures-*.md` in the project tree.
->
-> Working in generic mode — will follow CLAUDE.md if present.
->
-> Tip: Create `.claude/skills/procedures.md` in your project to define implementation patterns, review checklists, and testing conventions. For monorepos, create one per sub-project (e.g., `Android/.claude/skills/procedures.md`).
+This loads the Android project conventions, architecture rules, hard rules, and sub-skill guides bundled with this plugin.
 
 ## Step 8: Hand Off to Implementation
 
@@ -211,18 +142,16 @@ Present the complete task context:
 > | **Status** | In Progress |
 > | **Estimate** | [Xh / X story points] |
 > | **Branch** | `[branch-name]` |
-> | **Procedures** | [Loaded from path / Generic mode] |
+> | **Procedures** | Android (from plugin) |
 >
 > **Key requirements:**
 > - [Bullet 1 from acceptance criteria]
 > - [Bullet 2]
 > - [Bullet 3]
 >
-> [If procedures loaded: "Following [project type] conventions from procedures.md"]
->
 > What would you like to work on first?
 
-**During implementation:** Follow the conventions and patterns defined in the loaded `procedures.md`. If it defines how to structure files, name classes, write tests, or handle specific patterns — follow those rules.
+**During implementation:** Follow the conventions and patterns defined in `android:android-procedures`. If it defines how to structure files, name classes, write tests, or handle specific patterns — follow those rules.
 
 ---
 
@@ -232,27 +161,18 @@ After implementation is complete (user confirms they're done or says "finish", "
 
 ## Step 9: Self-Review Checklist
 
-Before running automated verification, prompt a self-review.
-
-**If procedures.md was loaded** — use the review checklist from procedures.md. It should define project-specific checks (e.g., "All interfaces use `I` prefix", "No `!!` operators", "Compose previews use @PreviewTheme").
-
-Present the project-specific checklist items PLUS these universal checks:
+Before running automated verification, prompt a self-review using the checklist from `android:android-procedures` (the `review-checklist` sub-skill).
 
 > **Pre-verification checklist:**
-> [Project-specific items from procedures.md review section]
+> - [ ] All interfaces use `I` prefix?
+> - [ ] No `!!` operators anywhere in changed files?
+> - [ ] Compose previews use `@PreviewTheme` + `MeAppTheme { }`?
+> - [ ] No hardcoded colors, typography, or spacing?
+> - [ ] `AppLog` used instead of `Log`/`Timber`?
+> - [ ] `super.handleIntent(intent)` called first in ViewModel?
+> - [ ] All API methods are `suspend`?
 > - [ ] Removed debug code, TODOs, and commented-out code?
 > - [ ] No secrets or credentials in the diff?
->
-> Proceed with verification? (yes / let me fix something first)
-
-**If no procedures.md** — use the generic checklist:
-
-> **Pre-verification checklist** — have you:
-> - [ ] Handled edge cases and error scenarios?
-> - [ ] Added or updated tests for your changes?
-> - [ ] Removed debug code, TODOs, and commented-out code?
-> - [ ] Checked that no secrets or credentials are in the diff?
-> - [ ] Followed the project's architecture and naming conventions?
 >
 > Proceed with verification? (yes / let me fix something first)
 

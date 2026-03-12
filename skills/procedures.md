@@ -1,6 +1,7 @@
 ---
 name: android-procedures
 description: Implementation, review, and testing procedures for the MeApp Android project — Kotlin, Jetpack Compose, Hilt, MVI architecture
+user-invocable: false
 ---
 
 # Android Project Procedures
@@ -62,15 +63,15 @@ Read a sub-skill when the task touches its **trigger files/packages**. Skip it i
 
 | Sub-Skill | Trigger — Read when task touches… |
 |-----------|----------------------------------|
-| [mvi-pattern](mvi-pattern.md) | `features/*/` — any ViewModel, Reducer, State, or Intent file; adding/modifying `handleIntent()` |
-| [compose-ui](compose-ui.md) | `features/*/` — any `*Screen.kt`, `components/*.kt`; theming, previews, `@PreviewTheme`, `MeAppTheme.*` |
-| [navigation-dialogs](navigation-dialogs.md) | `core/navigation/AppRoute.kt`; `navigationService.navigateTo()`; `dialogQueueService.*`; adding new routes |
-| [dependency-injection](dependency-injection.md) | `core/di/*.kt`; adding `@Provides`/`@Binds`; new `@HiltViewModel`; `@AssistedInject` |
-| [networking-api](networking-api.md) | `data/api/*.kt`; `core/network/`; interceptors; OkHttp/Retrofit; `SecureTokenStore`; new API endpoints |
-| [storage](storage.md) | `data/storage/db/` (entities, DAOs); `data/storage/datastore/`; `*.proto` files; Room migrations |
-| [services-repositories](services-repositories.md) | `data/repository/*.kt`; `core/service/*.kt`; `domain/repository/`; `domain/services/`; new service or repo |
-| [testing](testing.md) | `src/test/` — writing or modifying any unit test; new `*Test.kt` file |
-| [review-checklist](review-checklist.md) | **ALWAYS** — read before finishing any task (pre-PR checklist) |
+| [mvi-pattern](procedures/mvi-pattern.md) | `features/*/` — any ViewModel, Reducer, State, or Intent file; adding/modifying `handleIntent()` |
+| [compose-ui](procedures/compose-ui.md) | `features/*/` — any `*Screen.kt`, `components/*.kt`; theming, previews, `@PreviewTheme`, `MeAppTheme.*` |
+| [navigation-dialogs](procedures/navigation-dialogs.md) | `core/navigation/AppRoute.kt`; `navigationService.navigateTo()`; `dialogQueueService.*`; adding new routes |
+| [dependency-injection](procedures/dependency-injection.md) | `core/di/*.kt`; adding `@Provides`/`@Binds`; new `@HiltViewModel`; `@AssistedInject` |
+| [networking-api](procedures/networking-api.md) | `data/api/*.kt`; `core/network/`; interceptors; OkHttp/Retrofit; `SecureTokenStore`; new API endpoints |
+| [storage](procedures/storage.md) | `data/storage/db/` (entities, DAOs); `data/storage/datastore/`; `*.proto` files; Room migrations |
+| [services-repositories](procedures/services-repositories.md) | `data/repository/*.kt`; `core/service/*.kt`; `domain/repository/`; `domain/services/`; new service or repo |
+| [testing](procedures/testing.md) | `src/test/` — writing or modifying any unit test; new `*Test.kt` file |
+| [review-checklist](procedures/review-checklist.md) | **ALWAYS** — read before finishing any task (pre-PR checklist) |
 
 **If your task only touches `core/network/` (e.g., certificate pinning, interceptor changes), you need `networking-api` but NOT `mvi-pattern` or `compose-ui`.** Match sub-skills to the files you'll actually change.
 

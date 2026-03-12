@@ -1,6 +1,7 @@
 ---
 name: jira-transitioning
 description: Use when moving a Jira ticket between statuses — To Do to In Progress, In Progress to In Review, In Review to Done, or any other workflow transition including those requiring resolution fields
+user-invocable: false
 ---
 
 # Transitioning Jira Status

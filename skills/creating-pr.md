@@ -1,6 +1,7 @@
 ---
 name: creating-pr
 description: Use when creating a pull request — pushing branch, formatting PR title and body, determining base branch, adding reviewers, including test plan, linking to Jira, and handling draft PRs
+user-invocable: false
 ---
 
 # Creating a Pull Request
