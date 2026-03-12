@@ -93,10 +93,19 @@ git diff <base-branch>..HEAD --stat
 - Description / acceptance criteria
 - Subtasks completed
 
-**Changed file analysis:**
-- Count files changed, insertions, deletions
-- Identify which modules/features were modified
-- Flag if sensitive files changed (build configs, CI, env files, migrations)
+**Changed file analysis (go deep — read actual diffs):**
+
+Run `git diff <base-branch>..HEAD` to read the actual changes, then:
+- For each changed file, identify WHAT changed (new class, modified logic, deleted code)
+- Group by concern: "Security", "UI", "Data layer", "Tests", "Config", etc.
+- Produce 3-5 descriptive bullet points that explain WHY each change was made, not just what file was touched
+- Flag sensitive files changed (build configs, CI, migrations, network/auth code)
+
+Example — instead of:
+> - Modified NetworkModule.kt
+
+Write:
+> - Add `CertificatePinner` to OkHttpClient for `api.weightgurus.com` to prevent MITM attacks (OWASP M3)
 
 ## Step 5: Push Branch
 
@@ -186,20 +195,13 @@ EOF
 - Repo not found → "Could not find the remote repository. Check `git remote -v`."
 - Rate limit → "GitHub API rate limit reached. Wait a few minutes and retry."
 
-## Step 7: Link PR to Jira (Optional)
+## Step 7: Pass PR URL to Worklog
 
-After PR creation, offer to add the PR as a remote link on the Jira issue:
+Do NOT add the PR URL as a Jira comment. Instead, store the PR URL in session context so the `android:jira-worklogging` skill can automatically include it in the worklog description.
 
-> Link this PR to [TICKET-ID] in Jira? (yes/no)
+> PR URL to include in worklog: `[PR URL]`
 
-If yes, the PR URL should be added to Jira. Note: GitHub-Jira integrations may do this automatically — check if a link already exists first via `mcp__claude_ai_Atlassian__getJiraIssueRemoteIssueLinks`.
-
-If no existing link, add a comment to the Jira issue with the PR URL:
-
-Call `mcp__claude_ai_Atlassian__addCommentToJiraIssue` with:
-- `cloudId`: cached
-- `issueIdOrKey`: the ticket ID
-- `body`: "Pull Request: [PR URL]"
+The worklog skill will append `PR: <PR URL>` to the auto-generated description. This keeps all work tracking in the worklog rather than scattering it across comments.
 
 ## Step 8: Present Result
 
@@ -254,4 +256,5 @@ Call `mcp__claude_ai_Atlassian__addCommentToJiraIssue` with:
 | Vague test plan | Include specific scenarios from acceptance criteria |
 | Not checking if branch is behind base | Always fetch and check before creating PR |
 | Hardcoding build commands in test plan | Keep test plan generic, reference CLAUDE.md |
-| Skipping the Jira link | Always offer to link PR back to the ticket |
+| Adding PR URL as a Jira comment | Pass PR URL to worklog instead — keeps tracking in one place |
+| Vague PR summary bullets | Read actual git diff, not just --stat — explain WHY each change was made |

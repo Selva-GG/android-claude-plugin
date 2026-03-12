@@ -75,6 +75,15 @@ Read a sub-skill when the task touches its **trigger files/packages**. Skip it i
 
 **If your task only touches `core/network/` (e.g., certificate pinning, interceptor changes), you need `networking-api` but NOT `mvi-pattern` or `compose-ui`.** Match sub-skills to the files you'll actually change.
 
+## Git Rules (Strictly Enforced)
+
+- **NEVER push directly to `dev` or `main`** — all changes must go through a PR. If a `git push origin dev` or `git push origin main` is about to happen (outside of an explicit revert approved by the user), STOP and warn:
+  > ⛔ Direct push to `[dev/main]` is not allowed. Create a PR from your feature branch instead.
+- **NEVER commit without explicit user instruction.**
+- **NEVER push without explicit user instruction.**
+- **Always prefix commit messages with the Jira ticket ID** — e.g., `MA-3359: Add URL validation`.
+- **Feature branches only** — create a branch per ticket; never work directly on `dev` or `main`.
+
 ## Hard Rules (Enforced)
 
 1. **`!!` is BANNED** — detekt enforces `UnsafeCallOnNullableType`. Use `?: return`, `?.let`, `requireNotNull()`.

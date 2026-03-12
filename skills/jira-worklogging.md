@@ -57,13 +57,46 @@ Accept flexible time formats — Jira accepts these directly in the `timeSpent` 
 - > 24h single entry → "That's over 24 hours for a single entry. Did you mean [X]? (yes / correct to [Y])"
 - Duplicate detection: If a worklog exists for the same day with similar time → "You already logged [X] today. Add another [Y] entry? (yes/no)"
 
-## Step 4: Optional — Work Description
+## Step 4: Auto-Generate Work Description
 
-> Add a description for this worklog? (optional — press enter to skip)
+Do NOT ask the user for a description — generate it automatically from the git history.
+
+### Determine the since-date
+
+If previous worklogs exist, use the most recent worklog's `started` date as the cutoff:
+```bash
+git log --since="<last-worklog-date>" --oneline --no-merges
+```
+
+If no previous worklogs exist, use all commits on the current branch since it diverged from the base:
+```bash
+git log <base-branch>..HEAD --oneline --no-merges
+```
+
+### Build the description
+
+From the commit list:
+1. Group commits by theme (e.g., "Added X", "Fixed Y", "Updated Z")
+2. Summarize in 2-4 concise bullet points describing WHAT was done and WHY
+3. If a PR was created in this session, append: `PR: <PR URL>`
+
+**Example output:**
+```
+- Implemented SafeWebViewClient with HTTPS enforcement and domain allowlist (OWASP M1/M8)
+- Applied SafeWebViewClient in WebViewScreen and WebViewLauncher; tightened initial URL validation to HTTPS-only
+- Added 9 unit tests covering all acceptance criteria scenarios
+PR: https://github.com/dmdbrands/meApp/pull/1583
+```
+
+Present the generated description to the user for confirmation:
+> **Generated worklog description:**
+> [description]
 >
-> e.g., "Implemented login screen UI and tests"
+> Use this? (yes / edit)
 
-If user provides a description, include it as the `comment` field in the worklog.
+If user wants to edit, let them type a replacement.
+
+Include the confirmed description as the `comment` field in the worklog.
 
 ## Step 5: Optional — Date Override
 
@@ -126,3 +159,5 @@ After logging, present the updated time tracking:
 | Logging without asking | Always confirm with user first |
 | Ignoring duplicate detection | Warn if same-day entry already exists |
 | Skipping the updated totals | Always show how the entry changed the time tracking |
+| Generic worklog description | Auto-generate from git commits since last worklog — be specific about what was done |
+| Omitting PR URL from worklog | Always append `PR: <URL>` to description if a PR was created in this session |
