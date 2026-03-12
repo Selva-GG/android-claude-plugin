@@ -1,0 +1,16 @@
+{
+  "name": "android",
+  "version": "0.1.0",
+  "description": "Android workflow: Jira task management, build verification, PR creation, worklog tracking, and Android project procedures.",
+  "author": {
+    "name": "Selva-GG"
+  },
+  "license": "UNLICENSED",
+  "keywords": [
+    "jira",
+    "workflow",
+    "android",
+    "task-management",
+    "pr-creation"
+  ]
+}

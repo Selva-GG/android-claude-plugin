@@ -1,0 +1,21 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "android-claude-plugin",
+  "description": "Android workflow automation for Claude Code — Jira, build verification, PR creation, and Android project procedures.",
+  "owner": {
+    "name": "Selva-GG"
+  },
+  "plugins": [
+    {
+      "name": "android",
+      "description": "Android workflow: Jira task management, build verification, PR creation, worklog tracking, and Android project procedures.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Selva-GG"
+      },
+      "source": "./",
+      "category": "development",
+      "strict": false
+    }
+  ]
+}
