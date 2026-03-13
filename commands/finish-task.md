@@ -7,6 +7,8 @@ description: Complete task — self-review checklist, verify build/tests/lint, c
 
 You are completing work on a Jira ticket. Follow each step in order. Every external action requires user confirmation. Do not skip steps.
 
+**HARD RULE — No MCP Tools:** Never use `mcp__claude_ai_Atlassian__*` or any MCP Atlassian tools. All Jira operations MUST use ACLI (`acli`), curl + REST API, or `gh` CLI. If ACLI is not installed, run the `android:jira-setup` skill first — do NOT fall back to MCP.
+
 ### Prerequisites
 
 Check if GitHub CLI is available and authenticated:

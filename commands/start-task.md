@@ -8,6 +8,8 @@ argument-hint: "[optional: TICKET-ID]"
 
 You are beginning work on a Jira ticket. Follow each step in order. Every state change requires user confirmation. Do not skip steps.
 
+**HARD RULE — No MCP Tools:** Never use `mcp__claude_ai_Atlassian__*` or any MCP Atlassian tools. All Jira operations MUST use ACLI (`acli`), curl + REST API, or `gh` CLI. If ACLI is not installed, run the `android:jira-setup` skill first — do NOT fall back to MCP.
+
 ## Step 1: Get Jira Ticket ID
 
 If an argument was provided (e.g., `/android:start-task MA-3353`), use it as the ticket ID.
