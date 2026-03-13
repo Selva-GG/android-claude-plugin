@@ -7,6 +7,14 @@ description: Complete task — self-review checklist, verify build/tests/lint, c
 
 You are completing work on a Jira ticket. Follow each step in order. Every external action requires user confirmation. Do not skip steps.
 
+### Prerequisites
+
+Check if GitHub CLI is available and authenticated:
+```bash
+which gh && gh auth status
+```
+If either check fails: **REQUIRED:** Use the `android:gh-setup` skill.
+
 ## Step 1: Identify Jira Ticket
 
 Extract the Jira ticket ID from the current branch name:
@@ -163,20 +171,7 @@ This will:
 
 If no: skip to Step 7.
 
-## Step 7: Link PR to Jira
-
-**Only if a PR was created in Step 6.**
-
-Offer to add the PR link to the Jira ticket:
-> Link this PR to [TICKET-ID] in Jira? (yes/no)
-
-If yes, add a comment to the Jira issue with the PR URL:
-Call `mcp__claude_ai_Atlassian__addCommentToJiraIssue` with the PR URL.
-
-Check first if a link already exists (GitHub-Jira integration may auto-link):
-Call `mcp__claude_ai_Atlassian__getJiraIssueRemoteIssueLinks` — if PR URL is already linked, skip.
-
-## Step 8: Log Work Time
+## Step 7: Log Work Time
 
 **REQUIRED:** Use the `android:jira-worklogging` skill.
 
@@ -187,7 +182,7 @@ This will:
 - Submit worklog to Jira
 - Show updated totals
 
-## Step 9: Transition to In Review
+## Step 8: Transition to In Review
 
 **Only if a PR was created in Step 6.**
 
@@ -198,7 +193,7 @@ Target status: **In Review**
 If no PR was created, ask:
 > No PR was created. Still move ticket to "In Review"? (yes / no — keep as In Progress)
 
-## Step 10: Final Summary
+## Step 9: Final Summary
 
 Present the completion summary with all actions taken:
 
@@ -208,7 +203,6 @@ Present the completion summary with all actions taken:
 > |--------|--------|
 > | Verification | All passed (Build, Tests, Lint) |
 > | PR | [URL] or Skipped |
-> | Jira Link | Linked / Skipped / Already linked |
 > | Work Logged | [time] or Skipped |
 > | Status | [In Review / In Progress / unchanged] |
 >

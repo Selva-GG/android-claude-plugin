@@ -8,13 +8,25 @@ user-invocable: false
 
 ## Overview
 
-Add a worklog entry to a Jira ticket to track time spent. Supports viewing existing worklogs, adding descriptions, and date overrides.
+Add a worklog entry to a Jira ticket to track time spent. Supports viewing existing worklogs, adding descriptions, and date overrides. Uses curl + Jira REST API v3 directly (ACLI does not support worklog operations).
+
+### Prerequisites
+Check if `~/.jira-config` exists with required credentials:
+```bash
+test -f ~/.jira-config && source ~/.jira-config && test -n "$JIRA_SITE" && test -n "$JIRA_EMAIL" && test -n "$JIRA_TOKEN"
+```
+If check fails: **REQUIRED:** Use the `android:jira-setup` skill.
 
 ## Step 1: Show Existing Worklogs
 
 Before adding a new entry, show what's already been logged to avoid duplicates.
 
-From the fetched issue data:
+Fetch worklogs via ACLI:
+```bash
+acli jira workitem view <TICKET-ID> --json --fields "worklog,timetracking"
+```
+
+From the JSON output:
 - `fields.worklog.worklogs[]` — existing worklog entries
 
 Present:
@@ -41,15 +53,21 @@ If yes:
 
 > How much time did you spend? (e.g., 2h, 30m, 4h 30m)
 
-## Step 3: Validate Input
+## Step 3: Validate and Convert Input
 
-Accept flexible time formats — Jira accepts these directly in the `timeSpent` field (no conversion to seconds needed for worklogs):
-- `2h` → "2h"
-- `30m` → "30m"
-- `4h 30m` → "4h 30m"
-- `1d` → "1d"
-- `1d 2h` → "1d 2h"
-- `1d 2h 30m` → "1d 2h 30m"
+Accept flexible time formats and convert to seconds (REST API v3 requires `timeSpentSeconds`):
+- `2h` → 7200
+- `30m` → 1800
+- `4h 30m` → 16200
+- `1d` → 28800 (8 working hours)
+- `1d 2h` → 36000
+- `1d 2h 30m` → 37800
+- `0.5h` → 1800
+
+**Conversion formula:**
+- Days: `× 28800` (8 working hours per day — Jira convention)
+- Hours: `× 3600`
+- Minutes: `× 60`
 
 **Validation:**
 - Empty or zero → "Please enter a valid time (e.g., 2h, 30m)"
@@ -114,50 +132,78 @@ Validate:
 
 Format for API: `"started": "2026-03-10T09:00:00.000+0000"` (ISO 8601)
 
-## Step 6: Get Cloud ID
+## Step 6: Add Worklog via REST API
 
-Call `mcp__claude_ai_Atlassian__getAccessibleAtlassianResources` for the `cloudId`.
+The Jira REST API v3 requires ADF (Atlassian Document Format) for the comment field.
 
-Skip if already cached from a previous skill call in this session.
+```bash
+source ~/.jira-config
+curl -s -w "\n%{http_code}" -X POST \
+  -H "Authorization: Basic $(echo -n "$JIRA_EMAIL:$JIRA_TOKEN" | base64)" \
+  -H "Content-Type: application/json" \
+  "https://$JIRA_SITE/rest/api/3/issue/<TICKET-ID>/worklog" \
+  -d '{
+    "timeSpentSeconds": <SECONDS>,
+    "comment": {
+      "version": 1,
+      "type": "doc",
+      "content": [{"type": "paragraph", "content": [{"type": "text", "text": "<DESCRIPTION>"}]}]
+    },
+    "started": "<ISO_DATE>"
+  }'
+```
 
-## Step 7: Add Worklog
+**ADF comment format notes:**
+- The comment MUST use ADF format for REST API v3 — plain strings will be rejected
+- The template above supports single-paragraph text only
+- For multi-line descriptions, create multiple paragraph nodes in the `content` array:
+  ```json
+  "content": [
+    {"type": "paragraph", "content": [{"type": "text", "text": "Line 1"}]},
+    {"type": "paragraph", "content": [{"type": "text", "text": "Line 2"}]}
+  ]
+  ```
+- If the `started` field is omitted, Jira uses the current time
 
-Call `mcp__claude_ai_Atlassian__addWorklogToJiraIssue` with:
-- `cloudId`: from Step 6
-- `issueIdOrKey`: the ticket ID
-- `timeSpent`: the user-provided value (e.g., "2h")
-- `comment`: work description (if provided, omit if not)
-- `started`: date override (if provided, omit for today)
-
-**Error handling:**
-- 400 → "Failed to log work. Time tracking may be disabled for this project, or the time format is invalid."
-- 403 → "No permission to log work on this ticket. Check your project permissions."
-- 404 → "Ticket not found. It may have been deleted or moved."
-- 400 with date error → "Invalid date. Ensure format is correct and date is not in the future."
+**Parse the response:**
+- Extract the HTTP status code from the `-w "\n%{http_code}"` output
+- HTTP 201 → success
+- HTTP 400 → "Failed to log work. Time tracking may be disabled for this project."
+- HTTP 403 → "No permission to log work. Run `/android:jira-setup` to check credentials."
+- HTTP 404 → "Ticket not found."
+- HTTP 400 with date error → "Invalid date. Ensure format is correct and date is not in the future."
 
 **On success:**
 > Logged [time] to [TICKET-ID].
 > [If description: Description: "[description]"]
 > [If date override: Date: [date]]
 
-## Step 8: Show Updated Totals
+## Step 7: Show Updated Totals
 
-After logging, present the updated time tracking:
+After logging, fetch updated time tracking:
+
+```bash
+acli jira workitem view <TICKET-ID> --json --fields "timetracking"
+```
+
+Present:
 
 > **Time Tracking Updated:**
 > - Original estimate: [Xh]
 > - Total time spent: [new total] (was [previous])
 > - Remaining: [Xh]
-> [If spent > estimate: "⚠ Total time ([X]) now exceeds the estimate ([Y])"]
+> [If spent > estimate: "Total time ([X]) now exceeds the estimate ([Y])"]
 
 ## Common Mistakes
 
 | Mistake | Fix |
 |---------|-----|
 | Not showing existing worklogs | Always show what's already logged to prevent duplicates |
-| Converting time to seconds for worklogs | Worklogs accept human-readable format directly (unlike estimates) |
+| Using plain string for comment | REST API v3 requires ADF format — use the JSON template above |
+| Not converting time to seconds | REST API requires `timeSpentSeconds` as integer |
 | Logging without asking | Always confirm with user first |
 | Ignoring duplicate detection | Warn if same-day entry already exists |
 | Skipping the updated totals | Always show how the entry changed the time tracking |
 | Generic worklog description | Auto-generate from git commits since last worklog — be specific about what was done |
 | Omitting PR URL from worklog | Always append `PR: <URL>` to description if a PR was created in this session |
+| Forgetting to source ~/.jira-config | Always source before curl calls to get credentials |

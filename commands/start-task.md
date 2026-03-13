@@ -17,12 +17,25 @@ Otherwise ask the user:
 
 **Validate format:** Ticket ID should match pattern `[A-Z]+-[0-9]+` (e.g., MA-3353, PROJ-42). If it doesn't match, ask again.
 
+## Step 1.5: Verify CLI Setup
+
+Check if ACLI is available and credentials are configured:
+```bash
+which acli && test -f ~/.jira-config
+```
+If either check fails: **REQUIRED:** Use the `android:jira-setup` skill before proceeding.
+
+Check if GitHub CLI is available and authenticated:
+```bash
+which gh && gh auth status
+```
+If either check fails: **REQUIRED:** Use the `android:gh-setup` skill before proceeding.
+
 ## Step 2: Fetch and Validate Task
 
 **REQUIRED:** Use the `android:jira-fetching` skill.
 
 This will:
-- Fetch the Atlassian cloud ID (and cache it)
 - Retrieve all task details (summary, description, status, estimate, comments, links)
 - Parse ADF description into readable markdown
 - Present the full task summary to the user
@@ -43,7 +56,10 @@ After fetching the task, check the assignee field:
 **If unassigned:**
 > This ticket is unassigned. Assign it to yourself? (yes/no)
 
-If yes, call `mcp__claude_ai_Atlassian__editJiraIssue` to set the assignee. Use `mcp__claude_ai_Atlassian__lookupJiraAccountId` to find the user's account ID first.
+If yes, assign using ACLI:
+```bash
+acli jira workitem assign --key <TICKET-ID> --assignee @me
+```
 
 **If assigned to someone else:**
 > This ticket is assigned to [Name]. Continue anyway? (yes/no)
@@ -258,22 +274,9 @@ This will:
 - Create PR with Jira-prefixed title, summary, and test plan
 - Return the PR URL
 
-If no: skip to Step 15.
+If no: skip to Step 14.
 
-## Step 14: Link PR to Jira
-
-**Only if a PR was created in Step 13.**
-
-Offer to add the PR link to the Jira ticket:
-> Link this PR to [TICKET-ID] in Jira? (yes/no)
-
-If yes, add a comment to the Jira issue with the PR URL:
-Call `mcp__claude_ai_Atlassian__addCommentToJiraIssue` with the PR URL.
-
-Check first if a link already exists (GitHub-Jira integration may auto-link):
-Call `mcp__claude_ai_Atlassian__getJiraIssueRemoteIssueLinks` — if PR URL is already linked, skip.
-
-## Step 15: Log Work Time
+## Step 14: Log Work Time
 
 **REQUIRED:** Use the `android:jira-worklogging` skill.
 
@@ -284,7 +287,7 @@ This will:
 - Submit worklog to Jira
 - Show updated totals
 
-## Step 16: Transition to In Review
+## Step 15: Transition to In Review
 
 **Only if a PR was created in Step 13.**
 
@@ -295,7 +298,7 @@ Target status: **In Review**
 If no PR was created, ask:
 > No PR was created. Still move ticket to "In Review"? (yes / no — keep as In Progress)
 
-## Step 17: Final Summary
+## Step 16: Final Summary
 
 Present the completion summary with all actions taken:
 
@@ -305,7 +308,6 @@ Present the completion summary with all actions taken:
 > |--------|--------|
 > | Verification | All passed (Build, Tests, Lint) |
 > | PR | [URL] or Skipped |
-> | Jira Link | Linked / Skipped / Already linked |
 > | Work Logged | [time] or Skipped |
 > | Status | [In Review / In Progress / unchanged] |
 >

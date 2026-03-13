@@ -10,6 +10,13 @@ user-invocable: false
 
 Create a well-formatted GitHub pull request with Jira context, proper title format, test plan, and optional reviewers/labels. Works with any project type.
 
+### Prerequisites
+Check if GitHub CLI is available and authenticated:
+```bash
+which gh && gh auth status
+```
+If either check fails: **REQUIRED:** Use the `android:gh-setup` skill.
+
 ## Step 1: Pre-flight Checks
 
 ### Uncommitted changes
@@ -26,6 +33,7 @@ If user says yes, create a commit following git rules:
 - Prefix with Jira ticket ID: `<TICKET-ID>: [description]`
 - Never commit without explicit user instruction
 - Never amend — always create new commits
+- Never include `Co-Authored-By` trailers in commit messages
 
 ### Branch status
 ```bash
@@ -190,10 +198,47 @@ EOF
 - For API changes, include request/response validation scenarios
 
 **Error handling:**
-- "already exists" → "A PR already exists for this branch: [URL]. Open it instead?"
+- "already exists" → see **Existing PR Flow** below
 - Auth failure → "GitHub CLI not authenticated. Run `gh auth login`."
 - Repo not found → "Could not find the remote repository. Check `git remote -v`."
 - Rate limit → "GitHub API rate limit reached. Wait a few minutes and retry."
+
+### Existing PR Flow
+
+If `gh pr create` fails because a PR already exists for this branch:
+
+```bash
+gh pr view --json url,title,body,state --jq '{url: .url, title: .title, state: .state}'
+```
+
+Present options:
+> A PR already exists for this branch: [URL]
+> **Title:** [current title]
+> **Status:** [Open / Draft]
+>
+> Options:
+> - **Update** — regenerate title and description from current commits and Jira context
+> - **View** — open the existing PR (skip creation)
+> - **Skip** — keep existing PR as-is
+
+**If user chooses Update:**
+
+Regenerate the PR body using the same logic from Step 4 (gather context from commits, Jira, diff analysis), then:
+
+```bash
+gh pr edit \
+  --title "<TICKET-ID>: <new summary>" \
+  --body "$(cat <<'EOF'
+[regenerated PR body — same format as creation]
+EOF
+)"
+```
+
+On success:
+> PR updated: [URL]
+> - Title: [old] → [new]
+
+Continue to Step 7 (pass PR URL to worklog).
 
 ## Step 7: Pass PR URL to Worklog
 
@@ -205,8 +250,10 @@ The worklog skill will append `PR: <PR URL>` to the auto-generated description. 
 
 ## Step 8: Present Result
 
+**Formatting rule:** Always render the PR URL as a clickable markdown link — never output a bare URL. Use the format: `[PR #N — TICKET-ID: Summary](https://github.com/...)`.
+
 > **PR Created:**
-> - **URL:** [PR URL]
+> - **URL:** [PR #N — TICKET-ID: Summary](url)
 > - **Title:** [TICKET-ID]: [summary]
 > - **Base:** [base-branch] ← [current-branch]
 > - **Commits:** [N commits]
@@ -258,3 +305,5 @@ The worklog skill will append `PR: <PR URL>` to the auto-generated description. 
 | Hardcoding build commands in test plan | Keep test plan generic, reference CLAUDE.md |
 | Adding PR URL as a Jira comment | Pass PR URL to worklog instead — keeps tracking in one place |
 | Vague PR summary bullets | Read actual git diff, not just --stat — explain WHY each change was made |
+| Outputting bare PR URL as plain text | Always use markdown link: `[PR #N — TICKET: Summary](url)` |
+| Adding Co-Authored-By to commits | Never include Co-Authored-By trailers — plain commit messages only |

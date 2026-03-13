@@ -10,29 +10,33 @@ user-invocable: false
 
 Retrieve a Jira issue's full details, parse its description, and validate whether it contains enough information for implementation.
 
-## Step 1: Get Cloud ID
+### Prerequisites
+Check if ACLI is available and `~/.jira-config` exists:
+```bash
+which acli && test -f ~/.jira-config
+```
+If either check fails: **REQUIRED:** Use the `android:jira-setup` skill.
 
-Call `mcp__claude_ai_Atlassian__getAccessibleAtlassianResources` to get the `cloudId`.
+Check if GitHub CLI is available and authenticated:
+```bash
+which gh && gh auth status
+```
+If either check fails: **REQUIRED:** Use the `android:gh-setup` skill.
+
+## Step 1: Fetch the Issue
+
+```bash
+acli jira workitem view <TICKET-ID> --json --fields "*all"
+```
 
 **Error handling:**
-- No resources returned → "No Atlassian cloud found. Check your Atlassian MCP connection in `~/.claude/mcp.json`."
-- Multiple clouds → present list with names, ask user which one
-- Cache the `cloudId` for all subsequent Atlassian calls in this session — do not re-fetch
-
-## Step 2: Fetch the Issue
-
-Call `mcp__claude_ai_Atlassian__getJiraIssue` with:
-- `cloudId`: from Step 1
-- `issueIdOrKey`: the ticket ID (e.g., `MA-3353`)
-
-**Error handling:**
-- 404 → "Ticket [ID] not found. Check the ID and try again."
-- 403 → "No permission to access [ID]. You may need to be added to the project."
-- 401 → "Authentication failed. Your Atlassian MCP token may have expired."
+- Non-zero exit with "not found" → "Ticket [ID] not found. Check the ID and try again."
+- Non-zero exit with "forbidden" or "permission" → "No permission to access [ID]. You may need to be added to the project."
+- Non-zero exit with "unauthorized" or "auth" → "Authentication failed. Run `/android:jira-setup` to reconfigure."
 - Network/timeout → "Failed to reach Jira. Check your internet connection."
 - Empty response → "Jira returned an empty response. The ticket may have been deleted."
 
-## Step 3: Extract and Present
+## Step 2: Extract and Present
 
 Parse the response and display a comprehensive summary:
 
@@ -76,8 +80,8 @@ Parse the response and display a comprehensive summary:
 [or "None"]
 
 ### Design References
-- 🎨 **Figma:** [Figma link title](url)
-- 📎 **Attachments:** [screenshot.png], [mockup.jpg]
+- **Figma:** [Figma link title](url)
+- **Attachments:** [screenshot.png], [mockup.jpg]
 [or "No design references found"]
 ```
 
@@ -150,16 +154,19 @@ Each comment has:
 - `created` — when (format as relative: "2 days ago" or date)
 - `body` — ADF format, parse same as description
 
-## Fetching Remote Links (PRs)
+## Fetching Linked Pull Requests
 
-Call `mcp__claude_ai_Atlassian__getJiraIssueRemoteIssueLinks` with:
-- `cloudId`, `issueIdOrKey`
+Check for PRs linked to this ticket's branch:
 
-This returns linked PRs, external links, etc. Display PR title, status, and repo.
+```bash
+gh pr list --search "<TICKET-ID> in:title" --json url,title,state
+```
 
-**Skip if call fails** — remote links are supplementary, not critical.
+This searches for PRs with the ticket ID in their title (our PR title format is always `<TICKET-ID>: <summary>`). Display PR title, status, and URL.
 
-## Step 4: Validate Requirements
+**Skip if call fails** — PR links are supplementary, not critical.
+
+## Step 3: Validate Requirements
 
 Assess the description for implementation readiness.
 
@@ -213,12 +220,9 @@ From `fields.attachment[]`, filter for image types:
 
 Present attachment name and thumbnail URL.
 
-### 3. Remote Links
+### 3. PR-linked Design References
 
-From `mcp__claude_ai_Atlassian__getJiraIssueRemoteIssueLinks`, filter for:
-- URLs containing `figma.com`
-- URLs containing `zeplin.io`, `sketch.com`, `invisionapp.com`
-- Any link with title containing "design", "mockup", "figma"
+From the `gh pr list` results, check PR descriptions for Figma links if accessible.
 
 ### Surfacing Design References
 
@@ -234,7 +238,7 @@ If user says yes:
 **REQUIRED:** Use the `android:design-reference` skill to open and capture the designs.
 
 If NO design references found and the task involves UI changes:
-> ⚠ This task appears to involve UI changes but no design references were found.
+> This task appears to involve UI changes but no design references were found.
 > Is there a Figma link or design spec? (paste URL / no design needed / will check later)
 
 ## Custom Fields
@@ -248,7 +252,7 @@ Jira projects may have custom fields (e.g., story points, team, environment). Ha
 
 | Mistake | Fix |
 |---------|-----|
-| Re-fetching cloudId every time | Cache it after first call in session |
+| Not checking ACLI setup first | Always run prerequisites check before any Jira operation |
 | Crashing on null fields | Every field can be null — always use safe access |
 | Displaying raw ADF JSON | Parse ADF to markdown for readability |
 | Ignoring comments | Comments often contain critical context and decisions |

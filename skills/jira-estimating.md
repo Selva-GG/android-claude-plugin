@@ -10,6 +10,13 @@ user-invocable: false
 
 Review the current time estimate and story points on a Jira ticket. Compare with actual time spent. Update if the user wants to change them.
 
+### Prerequisites
+Check if ACLI is available and `~/.jira-config` exists:
+```bash
+which acli && test -f ~/.jira-config
+```
+If either check fails: **REQUIRED:** Use the `android:jira-setup` skill.
+
 ## Step 1: Present Current Tracking
 
 From the fetched issue data (use `android:jira-fetching` if not already fetched):
@@ -44,7 +51,7 @@ Present:
 >
 > **Analysis:**
 > - [If time spent > 0 and estimate exists: "[X]h spent of [Y]h estimated ([Z]% complete)"]
-> - [If time spent > estimate: "⚠ Time spent ([X]h) exceeds estimate ([Y]h) by [Z]h"]
+> - [If time spent > estimate: "Time spent ([X]h) exceeds estimate ([Y]h) by [Z]h"]
 > - [If no estimate: "No estimate set — consider adding one"]
 >
 > Does this estimate still look accurate? (yes / update to Xh / update story points)
@@ -88,24 +95,55 @@ Accept:
 
 ### Update Time Estimate
 
-Call `mcp__claude_ai_Atlassian__editJiraIssue` with:
-- `cloudId`: cached from session
-- `issueIdOrKey`: the ticket ID
-- `fields`: `{ "timeoriginalestimate": <seconds_as_integer> }`
+Write a temp JSON file and use ACLI to edit:
+
+```bash
+echo '{"fields": {"timeoriginalestimate": <seconds_as_integer>}}' > /tmp/jira-edit.json
+acli jira workitem edit --key <TICKET-ID> --from-json /tmp/jira-edit.json
+rm /tmp/jira-edit.json
+```
+
+**If ACLI fails (400 error)**, fall back to curl:
+
+```bash
+source ~/.jira-config
+curl -s -X PUT \
+  -H "Authorization: Basic $(echo -n "$JIRA_EMAIL:$JIRA_TOKEN" | base64)" \
+  -H "Content-Type: application/json" \
+  "https://$JIRA_SITE/rest/api/3/issue/<TICKET-ID>" \
+  -d '{"fields": {"timeoriginalestimate": <seconds_as_integer>}}'
+```
 
 ### Update Story Points
 
-Call `mcp__claude_ai_Atlassian__editJiraIssue` with:
-- `cloudId`: cached from session
-- `issueIdOrKey`: the ticket ID
-- `fields`: `{ "customfield_10016": <points_as_number> }`
+```bash
+echo '{"fields": {"customfield_10016": <points_as_number>}}' > /tmp/jira-edit.json
+acli jira workitem edit --key <TICKET-ID> --from-json /tmp/jira-edit.json
+rm /tmp/jira-edit.json
+```
+
+**If ACLI fails**, fall back to curl:
+
+```bash
+source ~/.jira-config
+curl -s -X PUT \
+  -H "Authorization: Basic $(echo -n "$JIRA_EMAIL:$JIRA_TOKEN" | base64)" \
+  -H "Content-Type: application/json" \
+  "https://$JIRA_SITE/rest/api/3/issue/<TICKET-ID>" \
+  -d '{"fields": {"customfield_10016": <points_as_number>}}'
+```
 
 **Note:** The custom field ID for story points varies per Jira instance. If `customfield_10016` fails with 400, try `story_points` or ask the user for the correct field name.
 
 ### Update Both
 
-If user wants to update both estimate and story points, make a single API call:
-- `fields`: `{ "timeoriginalestimate": <seconds>, "customfield_10016": <points> }`
+If user wants to update both estimate and story points, combine into a single JSON:
+
+```bash
+echo '{"fields": {"timeoriginalestimate": <seconds>, "customfield_10016": <points>}}' > /tmp/jira-edit.json
+acli jira workitem edit --key <TICKET-ID> --from-json /tmp/jira-edit.json
+rm /tmp/jira-edit.json
+```
 
 **Error handling:**
 - 400 → "Failed to update. The field may not be editable in this project, or the field ID may be wrong."
@@ -127,3 +165,4 @@ If user wants to update both estimate and story points, make a single API call:
 | Assuming story points field ID | `customfield_10016` is common but not universal — handle gracefully |
 | Not showing spent vs estimate comparison | Always show how much time has been used — helps user decide |
 | Ignoring negative remaining time | If spent > estimate, explicitly warn the user |
+| Not cleaning up temp JSON file | Always `rm /tmp/jira-edit.json` after the edit call |

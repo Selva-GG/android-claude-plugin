@@ -8,46 +8,65 @@ user-invocable: false
 
 ## Overview
 
-Move a Jira ticket to a new workflow status. Always discovers transition IDs dynamically — never hardcode them. Handles transitions that require additional fields (e.g., resolution).
+Move a Jira ticket to a new workflow status. ACLI handles transition discovery internally — no need to fetch transition IDs manually. Always confirms with the user before executing.
 
-## Step 1: Get Cloud ID
+### Prerequisites
+Check if ACLI is available and `~/.jira-config` exists:
+```bash
+which acli && test -f ~/.jira-config
+```
+If either check fails: **REQUIRED:** Use the `android:jira-setup` skill.
 
-Call `mcp__claude_ai_Atlassian__getAccessibleAtlassianResources` to get the `cloudId`.
+## Step 1: Check Current Status
 
-Skip if already cached from a previous skill call in this session.
+Fetch the current status before attempting a transition:
 
-## Step 2: Check Current Status
+```bash
+acli jira workitem view <TICKET-ID> --json --fields "status"
+```
 
-Before attempting a transition, confirm the current status by reading `fields.status.name` from the issue data.
+Read `fields.status.name` from the JSON output.
 
 If the issue is already in the target status:
 > [TICKET-ID] is already in "[Target Status]". No transition needed.
 
 Skip remaining steps.
 
-## Step 3: Discover Available Transitions
+## Step 2: Confirm with User
 
-Call `mcp__claude_ai_Atlassian__getTransitionsForJiraIssue` with:
-- `cloudId`: from Step 1
-- `issueIdOrKey`: the ticket ID
+Present the full transition:
 
-This returns the list of valid transitions from the current status.
+> Move [TICKET-ID] from "[Current Status]" to "[Target Status]"?
+> (yes/no)
 
-**CRITICAL:** Never hardcode transition IDs. They vary per Jira project, workflow configuration, and current status. Always discover them dynamically.
+**Never transition without user confirmation.**
 
-## Step 4: Match the Target Status
+## Step 3: Execute Transition
 
-From the transitions list, find the one matching the target status:
+```bash
+acli jira workitem transition --key <TICKET-ID> --status "TARGET_STATUS"
+```
 
-**Matching strategy:**
-1. Exact match on `transition.name` (case-insensitive)
-2. If no exact match, try `transition.to.name` (the destination status name)
-3. If still no match, try partial/fuzzy matching:
-   - "in progress" matches "In Progress", "Start Progress", "Begin Work"
-   - "in review" matches "In Review", "Code Review", "Peer Review"
-   - "done" matches "Done", "Closed", "Resolved", "Complete"
+**Status name matching:**
+ACLI performs its own matching, but if the user provides a shorthand:
+- "in progress" matches "In Progress", "Start Progress", "Begin Work"
+- "in review" matches "In Review", "Code Review", "Peer Review"
+- "done" matches "Done", "Closed", "Resolved", "Complete"
 
-**If no matching transition found:**
+Pass the user's target status as-is to ACLI — it handles fuzzy matching.
+
+**If ACLI transition fails with unrecognized status:**
+
+Try to list available transitions:
+```bash
+source ~/.jira-config
+curl -s -X GET \
+  -H "Authorization: Basic $(echo -n "$JIRA_EMAIL:$JIRA_TOKEN" | base64)" \
+  -H "Content-Type: application/json" \
+  "https://$JIRA_SITE/rest/api/3/issue/<TICKET-ID>/transitions" | jq '.transitions[] | {id: .id, name: .name, to: .to.name}'
+```
+
+Present available options:
 > Cannot transition [TICKET-ID] from "[Current Status]" to "[Target Status]".
 >
 > Available transitions from "[Current Status]":
@@ -57,18 +76,12 @@ From the transitions list, find the one matching the target status:
 >
 > Which transition would you like to use?
 
-Let the user pick from the available options.
+Let the user pick from the available options, then retry with the correct status name.
 
-## Step 5: Check for Required Fields
+**If transition requires resolution field:**
 
-Some transitions require additional fields to be set (e.g., "Done" often requires a `resolution`).
+Some transitions (e.g., "Done") require a resolution. If ACLI reports a missing required field:
 
-The transition response includes `fields` that indicate required inputs:
-- `transition.fields.resolution` → needs a resolution value
-- `transition.fields.comment` → may need a comment
-- Other screen fields
-
-**If resolution is required:**
 > This transition requires a resolution. Common options:
 > - Done
 > - Won't Do
@@ -77,42 +90,33 @@ The transition response includes `fields` that indicate required inputs:
 >
 > Which resolution? (or type a custom one)
 
-**If other fields are required:**
-> This transition requires: [field names]
-> Please provide values for each.
+Use curl as fallback to execute transitions with additional fields:
+```bash
+source ~/.jira-config
+curl -s -X POST \
+  -H "Authorization: Basic $(echo -n "$JIRA_EMAIL:$JIRA_TOKEN" | base64)" \
+  -H "Content-Type: application/json" \
+  "https://$JIRA_SITE/rest/api/3/issue/<TICKET-ID>/transitions" \
+  -d '{"transition": {"id": "TRANSITION_ID"}, "fields": {"resolution": {"name": "Done"}}}'
+```
 
-## Step 6: Confirm with User
-
-Present the full transition:
-
-> Move [TICKET-ID] from "[Current Status]" to "[Target Status]"?
-> [If resolution: Resolution: [value]]
-> (yes/no)
-
-**Never transition without user confirmation.**
-
-## Step 7: Execute Transition
-
-Call `mcp__claude_ai_Atlassian__transitionJiraIssue` with:
-- `cloudId`: from Step 1
-- `issueIdOrKey`: the ticket ID
-- `transitionId`: the `transition.id` from Step 4
-- Additional fields if required (e.g., `resolution`)
-
-**Error handling:**
+**General error handling:**
 - 400 → "Transition failed. [Parse error message]. The ticket may require fields that weren't provided."
 - 403 → "No permission to transition this ticket. Check your Jira project role."
 - 404 → "Ticket not found. It may have been deleted or moved."
 - 409 → "Conflict — the ticket's status may have been changed by someone else. Let me re-fetch."
-- 422 → "Validation error. A required field may be missing or invalid."
 
-**On 409 conflict:** Re-fetch the issue, check current status, discover transitions again, and retry.
+**On 409 conflict:** Re-fetch the issue, check current status, and retry.
 
-## Step 8: Verify Transition
+## Step 4: Verify Transition
 
-After successful transition, re-fetch the issue to confirm:
+After successful transition, confirm the status changed:
 
-Call `mcp__claude_ai_Atlassian__getJiraIssue` and check `fields.status.name`.
+```bash
+acli jira workitem view <TICKET-ID> --json --fields "status"
+```
+
+Read `fields.status.name` and confirm:
 
 > [TICKET-ID] successfully moved to "[New Status]".
 
@@ -133,9 +137,9 @@ If the status didn't change (rare edge case):
 
 | Mistake | Fix |
 |---------|-----|
-| Hardcoding transition IDs | Always discover via getTransitionsForJiraIssue |
+| Hardcoding transition IDs | ACLI handles discovery — pass status name, not ID |
 | Not checking current status first | Avoid unnecessary API calls and confusing errors |
-| Ignoring required fields | Check transition.fields and prompt for values |
+| Ignoring required fields | If transition fails, check if resolution or other fields are needed |
 | Not verifying after transition | Re-fetch to confirm the status actually changed |
-| Assuming transition names are universal | Names vary per project — always match dynamically |
+| Assuming transition names are universal | Names vary per project — let ACLI match or fall back to curl |
 | Transitioning without user consent | Always confirm, even if the command requested it |
