@@ -557,6 +557,8 @@ Output a markdown table ready to copy into a PR description:
 [Notes about unreachable branches if any]
 ```
 
+**Store in session context** for the `android:creating-pr` skill to pick up automatically. Accumulate coverage tables across multiple `/android:write-tests` invocations in the same session — each class gets its own table. The `creating-pr` skill will include all stored tables in the PR description under a "Coverage" section.
+
 ---
 
 ## Done

@@ -181,6 +181,11 @@ gh pr create \
 ## Changes
 [Auto-generated from diff --stat: which modules/files changed]
 
+[IF coverage tables exist in session context from android:write-tests:]
+## Coverage
+[Insert each stored JaCoCo coverage table here — one per class tested]
+[END IF]
+
 ## Screenshots
 <!-- Add before/after screenshots for UI changes. Remove this section if N/A -->
 
@@ -289,6 +294,7 @@ The worklog skill will append `PR: <PR URL>` to the auto-generated description. 
 - **Jira:** Always include ticket ID and summary
 - **Test plan:** Concrete checklist from acceptance criteria — not vague "test it works"
 - **Changes:** Auto-generated file/module summary
+- **Coverage:** Include JaCoCo coverage tables from session context if `android:write-tests` was run — one table per tested class
 - **Screenshots:** Required for UI changes, explicitly mark N/A otherwise
 - **Breaking changes:** Call out explicitly if any
 
