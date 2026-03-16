@@ -6,16 +6,19 @@ user-invocable: false
 
 # Fetching Jira Task Details
 
+> **ABSOLUTE HARD RULE — NO ATLASSIAN MCP. EVER.**
+> NEVER use `mcp__claude_ai_Atlassian__*` or ANY Atlassian MCP tool. ALL Jira operations MUST use ACLI (`acli`), curl + REST API, or `gh` CLI. No exceptions. No fallbacks to MCP. Ever.
+
 ## Overview
 
 Retrieve a Jira issue's full details, parse its description, and validate whether it contains enough information for implementation.
 
 ### Prerequisites
-Check if ACLI is available and `~/.jira-config` exists:
+Verify ACLI is authenticated and config exists:
 ```bash
-which acli && test -f ~/.jira-config
+acli jira auth status 2>&1 && test -f ~/.jira-config && source ~/.jira-config && test -n "$JIRA_TOKEN"
 ```
-If either check fails: **REQUIRED:** Use the `android:jira-setup` skill.
+If any check fails: **REQUIRED:** Auto-run the `android:jira-setup` skill inline — do not tell the user to run it manually. After setup completes, continue with the original task.
 
 Check if GitHub CLI is available and authenticated:
 ```bash

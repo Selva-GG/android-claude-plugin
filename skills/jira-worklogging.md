@@ -6,16 +6,19 @@ user-invocable: false
 
 # Logging Work Time
 
+> **ABSOLUTE HARD RULE — NO ATLASSIAN MCP. EVER.**
+> NEVER use `mcp__claude_ai_Atlassian__*` or ANY Atlassian MCP tool. ALL Jira operations MUST use ACLI (`acli`), curl + REST API, or `gh` CLI. No exceptions. No fallbacks to MCP. Ever.
+
 ## Overview
 
 Add a worklog entry to a Jira ticket to track time spent. Supports viewing existing worklogs, adding descriptions, and date overrides. Uses curl + Jira REST API v3 directly (ACLI does not support worklog operations).
 
 ### Prerequisites
-Check if `~/.jira-config` exists with required credentials:
+Verify ACLI is authenticated and config exists:
 ```bash
-test -f ~/.jira-config && source ~/.jira-config && test -n "$JIRA_SITE" && test -n "$JIRA_EMAIL" && test -n "$JIRA_TOKEN"
+acli jira auth status 2>&1 && test -f ~/.jira-config && source ~/.jira-config && test -n "$JIRA_TOKEN"
 ```
-If check fails: **REQUIRED:** Use the `android:jira-setup` skill.
+If any check fails: **REQUIRED:** Auto-run the `android:jira-setup` skill inline — do not tell the user to run it manually. After setup completes, continue with the original task.
 
 ## Step 1: Show Existing Worklogs
 
@@ -207,3 +210,4 @@ Present:
 | Generic worklog description | Auto-generate from git commits since last worklog — be specific about what was done |
 | Omitting PR URL from worklog | Always append `PR: <URL>` to description if a PR was created in this session |
 | Forgetting to source ~/.jira-config | Always source before curl calls to get credentials |
+| Telling user to run jira-setup manually | Auto-run the setup skill inline — user should never see "run /android:jira-setup" |

@@ -6,16 +6,19 @@ user-invocable: false
 
 # Transitioning Jira Status
 
+> **ABSOLUTE HARD RULE — NO ATLASSIAN MCP. EVER.**
+> NEVER use `mcp__claude_ai_Atlassian__*` or ANY Atlassian MCP tool. ALL Jira operations MUST use ACLI (`acli`), curl + REST API, or `gh` CLI. No exceptions. No fallbacks to MCP. Ever.
+
 ## Overview
 
 Move a Jira ticket to a new workflow status. ACLI handles transition discovery internally — no need to fetch transition IDs manually. Always confirms with the user before executing.
 
 ### Prerequisites
-Check if ACLI is available and `~/.jira-config` exists:
+Verify ACLI is authenticated and config exists:
 ```bash
-which acli && test -f ~/.jira-config
+acli jira auth status 2>&1 && test -f ~/.jira-config && source ~/.jira-config && test -n "$JIRA_TOKEN"
 ```
-If either check fails: **REQUIRED:** Use the `android:jira-setup` skill.
+If any check fails: **REQUIRED:** Auto-run the `android:jira-setup` skill inline — do not tell the user to run it manually. After setup completes, continue with the original task.
 
 ## Step 1: Check Current Status
 

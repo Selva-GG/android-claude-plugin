@@ -215,7 +215,7 @@ class <ClassName>Test {
     companion object {
         private const val ACCOUNT_ID = "acc-123"
         private const val USER_NAME = "test-user"
-        // All test data as constants — NEVER hardcode in test bodies
+        // MANDATORY: ALL test data as constants here — zero literals in test bodies
     }
 
     @Before
@@ -231,6 +231,8 @@ class <ClassName>Test {
     }
 }
 ```
+
+> **IMPORTANT:** When writing test methods in the steps below, put ALL string/numeric test data in the `companion object` as `private const val` from the start. Do NOT write literals inline and "fix it later" — write it correctly the first time. Step 5 will verify compliance and block progress if any literals remain.
 
 ### 4.2 Import Management
 
@@ -407,18 +409,23 @@ fun setUp() {
 
 ---
 
-## Step 5: Extract Constants
+## Step 5: Extract Constants — BLOCKING GATE
 
-### 5.1 Scan for Hardcoded Literals
+> **This step is MANDATORY and NON-NEGOTIABLE.** Do NOT proceed to Step 6 until every hardcoded literal is extracted. This is not a cleanup pass — it is a hard requirement.
 
-After writing all tests, scan the entire test file for:
-- String literals in test bodies (not in companion object)
-- Numeric literals used as test data (not `0`, `1`, `-1` or obvious indices)
+### 5.1 Zero-Tolerance Literal Scan
+
+Scan the **entire** test file line by line. Flag every:
+- String literal in test bodies (outside `companion object`)
+- Numeric literal used as test data (exceptions: `0`, `1`, `-1`, `exactly = 0`, `exactly = 1`, array indices)
 - Repeated values across multiple tests
+- Error message strings used in assertions (e.g., `"Network error"`)
+
+**If ANY flagged literal exists in a test body, extraction is required before continuing.**
 
 ### 5.2 Smart Extraction Rules
 
-Move literals to `companion object` as `private const val` with these safety rules:
+Move every flagged literal to `companion object` as `private const val`:
 
 | Rule | Why |
 |------|-----|
@@ -429,10 +436,14 @@ Move literals to `companion object` as `private const val` with these safety rul
 
 ### 5.3 Verify After Extraction
 
-After extraction, quick-scan the file for:
+After extraction, scan the file for:
 - Any self-referential constants (`val X = X`)
 - Any `it.CONSTANT_NAME` patterns (broken lambda property access)
 - Any compilation errors introduced
+
+### 5.4 Gate Check
+
+Re-scan all test methods one more time. If any hardcoded test data literal still exists in a test body → go back to 5.2. **Do not proceed to Step 6 until this gate passes.**
 
 ---
 

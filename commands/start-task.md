@@ -8,7 +8,7 @@ argument-hint: "[optional: TICKET-ID]"
 
 You are beginning work on a Jira ticket. Follow each step in order. Every state change requires user confirmation. Do not skip steps.
 
-**HARD RULE — No MCP Tools:** Never use `mcp__claude_ai_Atlassian__*` or any MCP Atlassian tools. All Jira operations MUST use ACLI (`acli`), curl + REST API, or `gh` CLI. If ACLI is not installed, run the `android:jira-setup` skill first — do NOT fall back to MCP.
+**HARD RULE — No MCP Tools:** Never use `mcp__claude_ai_Atlassian__*` or any MCP Atlassian tools. All Jira operations MUST use ACLI (`acli`), curl + REST API, or `gh` CLI. If ACLI is not authenticated, auto-run the `android:jira-setup` skill inline — do NOT fall back to MCP.
 
 ## Step 1: Get Jira Ticket ID
 
@@ -21,11 +21,11 @@ Otherwise ask the user:
 
 ## Step 1.5: Verify CLI Setup
 
-Check if ACLI is available and credentials are configured:
+Verify ACLI is authenticated and config exists:
 ```bash
-which acli && test -f ~/.jira-config
+acli jira auth status 2>&1 && test -f ~/.jira-config && source ~/.jira-config && test -n "$JIRA_TOKEN"
 ```
-If either check fails: **REQUIRED:** Use the `android:jira-setup` skill before proceeding.
+If any check fails: **REQUIRED:** Auto-run the `android:jira-setup` skill inline — do not tell the user to run it manually. After setup completes, continue with the original task.
 
 Check if GitHub CLI is available and authenticated:
 ```bash
