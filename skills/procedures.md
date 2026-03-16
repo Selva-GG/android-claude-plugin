@@ -18,7 +18,7 @@ user-invocable: false
 | **Navigation** | Navigation3 · sealed class routes |
 | **Storage** | Room DB · Protobuf DataStore |
 | **Network** | Retrofit 3 · OkHttp · Gson |
-| **Testing** | JUnit 4 · MockK · Turbine |
+| **Testing** | JUnit 6 (detect from build.gradle) · MockK · Turbine |
 
 ## Build Commands
 

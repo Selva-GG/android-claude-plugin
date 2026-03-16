@@ -183,7 +183,13 @@ gh pr create \
 
 [IF coverage tables exist in session context from android:write-tests:]
 ## Coverage
-[Insert each stored JaCoCo coverage table here — one per class tested]
+[Insert each stored JaCoCo coverage table here — one per class tested.
+Loop through all classes that were tested in this session.
+Each table should be in the format from write-tests Step 7.6:
+## JaCoCo Coverage: `ClassName`
+| Metric | Covered | Total | Coverage |
+...
+Include notes about unreachable code if present.]
 [END IF]
 
 ## Screenshots
@@ -204,6 +210,11 @@ EOF
 
 **Error handling:**
 - "already exists" → see **Existing PR Flow** below
+- "missing required scopes" → fall back to `gh api` for PR creation/updates:
+  ```bash
+  gh api repos/OWNER/REPO/pulls --method POST --field title="..." --field head="..." --field base="..." --field body="..."
+  ```
+  Only suggest `gh auth refresh -h github.com -s read:project` as last resort if `gh api` also fails.
 - Auth failure → "GitHub CLI not authenticated. Run `gh auth login`."
 - Repo not found → "Could not find the remote repository. Check `git remote -v`."
 - Rate limit → "GitHub API rate limit reached. Wait a few minutes and retry."

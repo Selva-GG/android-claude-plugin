@@ -160,6 +160,9 @@ Ask the user:
 > Create a Pull Request? (yes / no)
 
 If yes:
+
+**Coverage data handoff:** If `android:write-tests` was run in this session, coverage tables are in session context. Pass them to `android:creating-pr` so they're auto-included in the PR body under a "## Coverage" section.
+
 **REQUIRED:** Use the `android:creating-pr` skill.
 
 This will:
@@ -168,7 +171,7 @@ This will:
 - Check branch freshness (may be redundant with Step 4 — skip if already done)
 - Push branch if needed
 - Confirm PR title, reviewers, labels, draft status
-- Create PR with Jira-prefixed title, summary, and test plan
+- Create PR with Jira-prefixed title, summary, test plan, and coverage tables
 - Return the PR URL
 
 If no: skip to Step 7.
@@ -186,13 +189,9 @@ This will:
 
 ## Step 8: Transition to In Review
 
-**Only if a PR was created in Step 6.**
+**If a PR was created in Step 6:** Auto-transition to "In Review" without asking. Use the `android:jira-transitioning` skill with target status: **In Review**.
 
-**REQUIRED:** Use the `android:jira-transitioning` skill.
-
-Target status: **In Review**
-
-If no PR was created, ask:
+**If no PR was created:** Ask:
 > No PR was created. Still move ticket to "In Review"? (yes / no — keep as In Progress)
 
 ## Step 9: Final Summary

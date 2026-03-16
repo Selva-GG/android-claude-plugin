@@ -1,7 +1,7 @@
 ---
 name: write-tests
 description: Analyze a class, write comprehensive unit tests, extract constants, maximize code coverage with JaCoCo — supports Repository, ViewModel, Service, Reducer, and any Kotlin class
-argument-hint: "ClassName [--refresh]"
+argument-hint: "ClassName [ClassName2 ...] [--refresh]"
 ---
 
 # Write Unit Tests
@@ -15,8 +15,10 @@ You are writing unit tests for an Android/Kotlin class. Follow each step in orde
 ### 0.1 Parse Arguments
 
 Extract from the argument:
-- **ClassName**: the class to test (e.g., `UserSettingsRepository`)
+- **ClassNames**: one or more classes to test (e.g., `LoginViewModel SignupViewModel`)
 - **--refresh**: if present, force rescan even if cached
+
+If multiple classes provided, run Step 0 once (cache context), then loop Steps 1–7 per class. After all classes, display Step 8 batch summary.
 
 ### 0.2 Scan Test Dependencies
 
@@ -24,11 +26,27 @@ Read the project's `build.gradle.kts` (app module) and identify:
 
 | What to find | Where to look |
 |-------------|---------------|
-| Test framework | `testImplementation` — JUnit 4 (`junit:junit`) or JUnit 5 (`org.junit.jupiter`) |
+| Test framework | `testImplementation` — detect: `org.junit.jupiter` → **JUnit 6** (default); `junit:junit` → **JUnit 4** (legacy); if both → use JUnit 6 for new tests |
 | Mock library | MockK (`io.mockk`), Mockito, or other |
 | Coroutine testing | `kotlinx-coroutines-test` |
 | Flow testing | Turbine (`app.cash.turbine`) |
 | Assertion library | Truth (`com.google.common.truth`), AssertJ, or JUnit built-in |
+
+### 0.2b JUnit Version Mapping
+
+After detecting the JUnit version, use this mapping for ALL generated test code:
+
+| Concept | JUnit 4 | JUnit 6 (default) |
+|---------|---------|---------|
+| Test annotation | `org.junit.Test` | `org.junit.jupiter.api.Test` |
+| Setup | `@Before` | `@BeforeEach` |
+| Teardown | `@After` | `@AfterEach` |
+| Rule | `@get:Rule` | `@JvmField @RegisterExtension` |
+| Exception test | try/catch + `fail()` | `assertThrows<Exception> { }` |
+| Imports prefix | `org.junit.` | `org.junit.jupiter.api.` |
+| MainDispatcherRule base | `TestWatcher` | `BeforeEachCallback, AfterEachCallback` |
+
+Store detected version in session context as `junitVersion: 4 | 6`.
 
 ### 0.3 Learn Existing Test Patterns
 
@@ -39,13 +57,29 @@ find . -path "*/src/test/*" -name "*Test.kt" | head -3
 
 Read each and note:
 - **Mock declaration style**: `@MockK(relaxUnitFun = true)` vs `@MockK(relaxed = true)` vs inline `mockk()`
-- **Setup pattern**: `@Before fun setUp()` with `MockKAnnotations.init(this)` vs manual init
+- **Setup pattern**: `@BeforeEach` (JUnit 6) or `@Before` (JUnit 4) with `MockKAnnotations.init(this)` vs manual init
 - **Assertion style**: `assertThat(x).isEqualTo(y)` (Truth) vs `assertEquals(x, y)` (JUnit)
 - **Naming convention**: backtick (`` fun `method does X`() ``) vs camelCase
 - **Constants**: `companion object` with `private const val` vs inline strings
 - **Coroutine tests**: `= runTest { }` pattern
 - **Dispatcher rule**: Does `MainDispatcherRule` exist? Where?
 - **`@After` teardown**: Is `clearMocks()` or `unmockkAll()` used?
+
+### 0.3b Detect Test Infrastructure
+
+Search the test source tree for project-specific test utilities:
+
+```bash
+find . -path "*/src/test/*" \( -name "*Extensions*.kt" -o -name "*Fixtures*.kt" -o -name "*TestHelper*.kt" -o -name "*Rule*.kt" \)
+```
+
+For each found, read and note:
+- **ViewModel extension functions** (e.g., `initTestDependencies()`) — use in all ViewModel tests
+- **Test fixture objects** (e.g., `TestFixtures.activeAccount`) — use instead of complex mocks
+- **Custom test rules/extensions** (e.g., `MainDispatcherRule`) — reuse, don't recreate
+- **Base test classes** — extend if project convention
+
+Store in session context for reuse across test classes.
 
 ### 0.4 Detect Architecture & Infrastructure
 
@@ -65,7 +99,7 @@ Read each and note:
 Store all findings in session context for reuse. Display a brief summary:
 
 > **Project Context:**
-> - Framework: [JUnit 4/5] + [MockK/Mockito] + [Truth/AssertJ]
+> - Framework: [JUnit 4/6] + [MockK/Mockito] + [Truth/AssertJ]
 > - Coroutines: [yes/no] | Turbine: [yes/no]
 > - Architecture: [MVI/MVVM/other]
 > - Mock style: [@MockK(relaxUnitFun = true) / relaxed / inline]
@@ -117,6 +151,22 @@ For each constructor parameter:
 | `dataStore` | `UserDataStore` | DataStore | `@MockK(relaxUnitFun = true)` |
 | `accountRepo` | `IAccountRepository` | Repository | `@MockK(relaxed = true)` |
 
+### 2.1b @AssistedInject Detection
+
+If the class constructor has `@AssistedInject`:
+1. Identify `@Assisted` parameters — these are runtime values, not injected dependencies
+2. In test setup, pass them as regular constructor arguments (use test constants)
+3. Do NOT mock assisted parameters — they are plain values (String, Int, etc.)
+
+```kotlin
+// Example: ViewModel with @AssistedInject
+viewModel = FooViewModel(
+    sku = TEST_SKU,              // @Assisted — pass as plain value
+    scaleInfo = null,            // @Assisted — nullable, pass null or test fixture
+    deviceService = mockService, // @Inject — use mock
+)
+```
+
 ### 2.2 Method Inventory
 
 For each public/internal method:
@@ -151,7 +201,49 @@ Scan the source for these patterns and flag each:
 | Multiple `when` branches | Each branch needs a test case | Map all branches |
 | `try { } catch { }` blocks | Both success and failure paths need testing | Test both paths |
 
-### 2.5 Display Analysis Report
+### 2.5 Init Block Coroutine Analysis
+
+Scan the class init block (and parent class init) for infinite coroutine patterns:
+
+| Pattern | Detection | Risk |
+|---------|-----------|------|
+| `while (!isDestroyed)` + `delay()` | Grep for `while\s*\(` + `delay\(` in same method | `advanceUntilIdle()` hangs forever — infinite scheduling loop |
+| `state.collect {` | Grep for `state\.collect` in init | `runTest` cleanup hangs (60s timeout per test) |
+| `.collect {` on hot Flow | Any `.collect` on a Flow that never completes | `runTest` cleanup hangs |
+| Polling with `delay()` | `delay()` inside a loop | `advanceUntilIdle()` chases infinite iterations |
+
+**If ANY infinite pattern detected:**
+
+Flag: "Infinite coroutine detected in init block"
+
+**Test-side remediation (apply automatically):**
+1. Use `StandardTestDispatcher()` (NOT `UnconfinedTestDispatcher`)
+2. Never use `runTest` — tests must be plain functions (no `= runTest { }`)
+3. Never use `advanceUntilIdle()` — use `advanceTimeBy(200)` + `runCurrent()`
+4. Add `@AfterEach` that calls `onCleared()` via reflection to cancel viewModelScope:
+   ```kotlin
+   @AfterEach
+   fun tearDown() {
+       val method = viewModel::class.java.getDeclaredMethod("onCleared")
+       method.isAccessible = true
+       method.invoke(viewModel)
+   }
+   ```
+5. Add helper method:
+   ```kotlin
+   private fun advanceScheduler() {
+       testDispatcher.scheduler.advanceTimeBy(200)
+       testDispatcher.scheduler.runCurrent()
+   }
+   ```
+
+**ViewModel-side suggestions (present to user, don't auto-apply):**
+- Replace `state.collect { }` with `.map { relevantFields }.distinctUntilChanged().collect { }` — reduces unnecessary emissions
+- Flag `while(true) + delay()` loops as candidates for Flow-based alternatives (e.g., `flow { while(true) { emit(Unit); delay(1500) } }.collect { }`)
+
+**If NO infinite patterns detected:** Use standard `UnconfinedTestDispatcher` + `runTest` pattern as normal.
+
+### 2.6 Display Analysis Report
 
 Print the full analysis, then auto-proceed to Step 3.
 
@@ -215,24 +307,25 @@ class <ClassName>Test {
     companion object {
         private const val ACCOUNT_ID = "acc-123"
         private const val USER_NAME = "test-user"
-        // MANDATORY: ALL test data as constants here — zero literals in test bodies
+        // All reusable test data as constants here
     }
 
-    @Before
+    // Use @BeforeEach (JUnit 6) or @Before (JUnit 4) — based on detected version
+    @BeforeEach
     fun setUp() {
         MockKAnnotations.init(this)
         sut = ClassName(dependency1, dependency2)
     }
 
-    // @After only if shared mutable state detected
-    @After
+    // @AfterEach only if shared mutable state detected (or infinite init coroutines — see Step 2.5)
+    @AfterEach
     fun tearDown() {
         clearMocks(dependency1, dependency2)
     }
 }
 ```
 
-> **IMPORTANT:** When writing test methods in the steps below, put ALL string/numeric test data in the `companion object` as `private const val` from the start. Do NOT write literals inline and "fix it later" — write it correctly the first time. Step 5 will verify compliance and block progress if any literals remain.
+> **Tip:** Put reusable test data (IDs, names, emails) in `companion object` as `private const val` from the start. Single-use values in `match {}` lambdas or one-off assertions can stay inline.
 
 ### 4.2 Import Management
 
@@ -281,8 +374,17 @@ fun `getUser returns user when API succeeds`() = runTest {
 #### B. Error Path
 Exception handling, API failures, null responses.
 
-**Important:** For JUnit 4 with suspend functions, use try/catch — NOT `assertThrows`:
+**JUnit 6 (default):** Use `assertThrows`:
+```kotlin
+@Test
+fun `getUser throws when API fails`() = runTest {
+    coEvery { userApi.getUser(any()) } throws RuntimeException(NETWORK_ERROR)
+    val exception = assertThrows<RuntimeException> { sut.getUser(ACCOUNT_ID) }
+    assertThat(exception.message).isEqualTo(NETWORK_ERROR)
+}
+```
 
+**JUnit 4 (legacy):** Use try/catch — `assertThrows` doesn't work reliably with `suspend` in JUnit 4:
 ```kotlin
 @Test
 fun `getUser throws when API fails`() = runTest {
@@ -361,7 +463,7 @@ fun `saveUser does not update cache when API fails`() = runTest {
 }
 ```
 
-> **NOTICE:** Every example above uses constants (`ACCOUNT_ID`, `NETWORK_ERROR`, `DB_ERROR`, `API_ERROR`) — never inline strings. Your generated tests MUST do the same. If you catch yourself writing a literal string inside a test body, stop and add it to `companion object` first.
+> **Tip:** The examples above use constants for reusable values. Follow the same pattern for values used in 2+ tests.
 
 ### 4.4 Type-Specific Patterns
 
@@ -372,12 +474,14 @@ fun `saveUser does not update cache when API fails`() = runTest {
 - Test: Flow delegation from DataStore
 
 #### ViewModel Tests
-- Requires `MainDispatcherRule` (`@get:Rule`)
+- Requires `MainDispatcherRule` — use `@JvmField @RegisterExtension` (JUnit 6) or `@get:Rule` (JUnit 4)
 - Mock services and repositories
-- Test: `handleIntent(Intent.X)` → `advanceUntilIdle()` → assert `state.value`
+- If infinite init coroutines detected (Step 2.5): use `StandardTestDispatcher` + `advanceScheduler()` helper, no `runTest`
+- Otherwise: use `UnconfinedTestDispatcher` + `runTest` + `advanceUntilIdle()`
+- Test: `handleIntent(Intent.X)` → assert `state.value`
 - Test: navigation calls via `navigationService`
 - Test: dialog/toast calls via `dialogQueueService`
-- Always call `super.handleIntent(intent)` check
+- If project has `initTestDependencies()` (detected in Step 0.3b): call it after constructor
 
 #### Reducer Tests
 - **No mocks needed** — pure function testing
@@ -395,7 +499,7 @@ fun `saveUser does not update cache when API fails`() = runTest {
 ### 4.5 Test Isolation
 
 If the class under test has mutable state or if mocks are shared across tests that could interfere:
-- Add `@After fun tearDown() { clearMocks(...) }` or `unmockkAll()`
+- Add `@AfterEach fun tearDown() { clearMocks(...) }` (JUnit 6) or `@After` (JUnit 4)
 - Ensure each test sets up its own stubs — never rely on ordering
 
 ### 4.6 Dispatcher Injection
@@ -404,7 +508,7 @@ If the class takes a `CoroutineDispatcher` parameter:
 ```kotlin
 private val testDispatcher = UnconfinedTestDispatcher()
 
-@Before
+@BeforeEach  // or @Before for JUnit 4
 fun setUp() {
     MockKAnnotations.init(this)
     sut = ClassName(dependency1, testDispatcher)
@@ -413,23 +517,26 @@ fun setUp() {
 
 ---
 
-## Step 5: Extract Constants — BLOCKING GATE
+## Step 5: Extract Constants
 
-> **This step is MANDATORY and NON-NEGOTIABLE.** Do NOT proceed to Step 6 until every hardcoded literal is extracted. This is not a cleanup pass — it is a hard requirement.
+### 5.1 Smart Literal Scan
 
-### 5.1 Zero-Tolerance Literal Scan
+Scan test file for literals that should be extracted to `companion object`:
 
-Scan the **entire** test file line by line. Flag every:
-- String literal in test bodies (outside `companion object`)
-- Numeric literal used as test data (exceptions: `0`, `1`, `-1`, `exactly = 0`, `exactly = 1`, array indices)
-- Repeated values across multiple tests
-- Error message strings used in assertions (e.g., `"Network error"`)
+**Extract when:**
+- Value is used in **2+ tests** — always extract to avoid duplication
+- Numeric test data (except `0`, `1`, `-1`, `true`, `false`, array indices, `exactly = N`)
+- String values used as test identifiers (IDs, names, emails, URLs)
 
-**If ANY flagged literal exists in a test body, extraction is required before continuing.**
+**Allow inline when:**
+- String inside `match { }` lambda (e.g., `match<Toast> { it.title == "Success!" }`)
+- Single-use value in exactly 1 test with clear meaning
+- Error messages that are assertion targets and used once
+- Boolean/null literals
 
 ### 5.2 Smart Extraction Rules
 
-Move every flagged literal to `companion object` as `private const val`:
+Move flagged literals to `companion object` as `private const val`:
 
 | Rule | Why |
 |------|-----|
@@ -445,9 +552,9 @@ After extraction, scan the file for:
 - Any `it.CONSTANT_NAME` patterns (broken lambda property access)
 - Any compilation errors introduced
 
-### 5.4 Gate Check
+### 5.4 Verification
 
-Re-scan all test methods one more time. If any hardcoded test data literal still exists in a test body → go back to 5.2. **Do not proceed to Step 6 until this gate passes.**
+Re-scan test methods. If any repeated literal (used 2+ times) or numeric test data exists inline → extract. Single-use inline strings in `match {}` or assertion targets are acceptable.
 
 ---
 
@@ -478,7 +585,7 @@ Read the error output and match against known patterns:
 
 **Fix → re-run → repeat until all tests pass.**
 
-**IMPORTANT:** When fixing tests, any new string/numeric literals you add (e.g., mock return values, expected values) MUST go into `companion object` as constants. Never introduce inline literals during fixes.
+When fixing tests, extract any new reusable literals to `companion object` constants.
 
 Maximum retry loops: 5. If still failing after 5 attempts:
 > Tests still failing after 5 fix attempts. Remaining errors:
@@ -488,6 +595,22 @@ Maximum retry loops: 5. If still failing after 5 attempts:
 ---
 
 ## Step 7: Coverage Maximization Loop
+
+### 7.0 Determine Coverage Target
+
+Before running JaCoCo, determine the appropriate coverage target based on class characteristics.
+
+**Hardware ViewModel indicators** (any match = hardware class):
+- Imports containing: `GGDeviceService`, `WifiScaleService`, `GGPermissionService`, `BluetoothAdapter`, `WifiManager`, `BLEDiscoveryManager`, `WiFiConfigManager`, or similar BLE/WiFi/hardware classes
+- Class body > 800 lines
+- Extends a class with "Scale", "Ble", or "Wifi" in the name
+
+| Class Type | Instructions Target | Branches Target | Lines Target |
+|------------|-------------------|-----------------|--------------|
+| Standard | 95% | 90% | 95% |
+| Hardware ViewModel | 50% | 30% | 50% |
+
+Display the selected target before running JaCoCo.
 
 ### 7.1 Run JaCoCo
 
@@ -526,7 +649,7 @@ Scan existing tests for weak assertions that don't actually verify behavior:
 
 Strengthen weak assertions where possible.
 
-**IMPORTANT:** When strengthening assertions, any new expected values you introduce (e.g., `isEqualTo("expected")`, `hasSize(5)`) MUST use constants from `companion object`. Never add inline literals during this step.
+When strengthening assertions, extract reusable expected values to `companion object` constants.
 
 ### 7.4 Coverage Gap Iteration
 
@@ -534,13 +657,13 @@ If there are **coverable** gaps remaining (after filtering unreachable):
 
 1. Identify the specific uncovered methods/branches/lines
 2. Write additional tests targeting those gaps
-3. **Re-run Step 5 (Extract Constants — BLOCKING GATE)** on the entire test file — new tests MUST have constants extracted before proceeding
+3. Re-run Step 5 (Extract Constants) on the entire test file — extract reusable literals
 4. Run tests (Step 6 loop)
 5. Re-run JaCoCo
 6. Check again
 7. Repeat until no more coverable gaps
 
-> **CRITICAL:** Step 3 is not optional. Every time new tests are added — whether in the initial write or during coverage iteration — the full constant extraction gate (Step 5) must be re-run on the entire file. No exceptions.
+> Every time new tests are added, re-run Step 5 constant extraction on the entire file.
 
 **Maximum iterations:** 3. If still gaps after 3 rounds, document remaining gaps and stop.
 
@@ -580,6 +703,19 @@ Output a markdown table ready to copy into a PR description:
 ```
 
 **Store in session context** for the `android:creating-pr` skill to pick up automatically. Accumulate coverage tables across multiple `/android:write-tests` invocations in the same session — each class gets its own table. The `creating-pr` skill will include all stored tables in the PR description under a "Coverage" section.
+
+---
+
+## Step 8: Batch Summary (multi-class only)
+
+If multiple classes were tested in a single invocation, display a summary table:
+
+> **Batch Test Summary:**
+> | Class | Tests | Instructions | Branches | Lines |
+> |-------|-------|-------------|----------|-------|
+> | LoginViewModel | 32 | 95.8% | 100% | 100% |
+> | SignupViewModel | 29 | 96.5% | 92% | 98% |
+> | **Total** | **61** | | | |
 
 ---
 

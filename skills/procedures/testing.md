@@ -1,15 +1,20 @@
 # Testing
 
+> For the full automated test-writing workflow (with JaCoCo coverage analysis), use `/android:write-tests`. This file serves as a quick reference for testing patterns.
+
 ## Setup
 
 | Library | Purpose |
 |---------|---------|
-| JUnit 4 | Test framework |
+| JUnit 6 (`org.junit.jupiter`) | Test framework (default) |
+| JUnit 4 (`junit:junit`) | Legacy test framework (detect from build.gradle) |
 | MockK | Mocking (Kotlin-native) |
 | Turbine | Flow testing |
 | kotlinx-coroutines-test | `runTest`, `TestDispatcher` |
 
-Test location: `app/src/test/java/com/dmdbrands/gurus/weight/`
+Test location: `[module]/src/test/java/[package]/`
+
+> **JUnit version:** Detect from `build.gradle.kts` — if `org.junit.jupiter` is present, use JUnit 6 annotations. If `junit:junit`, use JUnit 4. Default to JUnit 6 for new projects.
 
 ## Naming Convention
 
@@ -43,9 +48,9 @@ class GoalReducerTest {
     fun `Submit sets isLoading true and clears error`() {
         val result = reducer.reduce(initialState, GoalIntent.Submit)
 
-        assertNotNull(result)
-        assertTrue(result!!.isLoading)
-        assertNull(result.error)
+        assertThat(result).isNotNull()
+        assertThat(result?.isLoading).isTrue()
+        assertThat(result?.error).isNull()
     }
 
     @Test
@@ -53,9 +58,9 @@ class GoalReducerTest {
         val loadingState = initialState.copy(isLoading = true)
         val result = reducer.reduce(loadingState, GoalIntent.Error("Failed"))
 
-        assertNotNull(result)
-        assertFalse(result!!.isLoading)
-        assertEquals("Failed", result.error)
+        assertThat(result).isNotNull()
+        assertThat(result?.isLoading).isFalse()
+        assertThat(result?.error).isEqualTo("Failed")
     }
 
     @Test
@@ -80,10 +85,11 @@ class GoalViewModelTest {
     private val entryService: IEntryService = mockk(relaxed = true)
     private val dialogUtility: IDialogUtility = mockk(relaxed = true)
 
-    @get:Rule
+    @JvmField
+    @RegisterExtension
     val mainDispatcherRule = MainDispatcherRule()
 
-    @Before
+    @BeforeEach
     fun setup() {
         // Stub flows before ViewModel init (init block collects them)
         every { accountService.activeAccountFlow } returns flowOf(testAccount)
@@ -121,7 +127,29 @@ class GoalViewModelTest {
 
 ### MainDispatcherRule
 
-Required for ViewModel tests that use `viewModelScope`:
+Required for ViewModel tests that use `viewModelScope`.
+
+**JUnit 6 (default) — Extension API:**
+```kotlin
+@OptIn(ExperimentalCoroutinesApi::class)
+class MainDispatcherRule(
+    val dispatcher: TestDispatcher = UnconfinedTestDispatcher(),
+) : BeforeEachCallback, AfterEachCallback {
+    override fun beforeEach(context: ExtensionContext?) {
+        Dispatchers.setMain(dispatcher)
+    }
+    override fun afterEach(context: ExtensionContext?) {
+        Dispatchers.resetMain()
+    }
+}
+
+// Usage:
+@JvmField @RegisterExtension
+val mainDispatcherRule = MainDispatcherRule()
+```
+
+<details>
+<summary>JUnit 4 Legacy — TestWatcher</summary>
 
 ```kotlin
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -135,6 +163,37 @@ class MainDispatcherRule(
         Dispatchers.resetMain()
     }
 }
+
+// Usage:
+@get:Rule val mainDispatcherRule = MainDispatcherRule()
+```
+</details>
+
+### Infinite Init Coroutine Pattern
+
+If a ViewModel has `while(!isDestroyed) + delay()` or `state.collect` in its init block, use `StandardTestDispatcher` instead of `UnconfinedTestDispatcher`:
+
+```kotlin
+private val testDispatcher = StandardTestDispatcher()
+
+@JvmField @RegisterExtension
+val mainDispatcherRule = MainDispatcherRule(testDispatcher)
+
+// Never use runTest — it hangs waiting for infinite coroutines
+// Never use advanceUntilIdle() — it chases infinite delay() loops forever
+// Instead:
+private fun advanceScheduler() {
+    testDispatcher.scheduler.advanceTimeBy(200)
+    testDispatcher.scheduler.runCurrent()
+}
+
+@AfterEach
+fun tearDown() {
+    // Cancel viewModelScope to stop infinite loops
+    val method = viewModel::class.java.getDeclaredMethod("onCleared")
+    method.isAccessible = true
+    method.invoke(viewModel)
+}
 ```
 
 ## Repository Tests
@@ -145,7 +204,7 @@ class FooRepositoryTest {
     private val fooDao: FooDao = mockk(relaxed = true)
     private lateinit var repository: FooRepository
 
-    @Before
+    @BeforeEach
     fun setup() {
         repository = FooRepository(fooAPI, fooDao)
     }
@@ -157,7 +216,7 @@ class FooRepositoryTest {
 
         val result = repository.getFoo("1")
 
-        assertEquals("1", result.id)
+        assertThat(result.id).isEqualTo("1")
         coVerify { fooDao.insert(any()) }  // Verify caching
     }
 
@@ -180,7 +239,7 @@ class FooServiceTest {
     private val accountRepository: IAccountRepository = mockk()
     private lateinit var service: FooService
 
-    @Before
+    @BeforeEach
     fun setup() {
         service = FooService(fooRepository, accountRepository)
     }
@@ -282,6 +341,9 @@ fun `observeFoos emits updated list`() = runTest {
 |---------|-----|
 | Missing `MainDispatcherRule` | ViewModel tests crash without it |
 | Forgetting `advanceUntilIdle()` | Coroutines don't complete — assertions run too early |
+| Using `advanceUntilIdle()` with infinite init loops | Hangs forever — use `advanceTimeBy(200)` + `runCurrent()` instead |
+| Using `runTest` with infinite init coroutines | `runTest` cleanup waits 60s per test — use plain functions instead |
 | Testing UI composables | Only test ViewModel/Reducer — skip UI unless asked |
 | Using `mockk()` when `mockk(relaxed = true)` needed | Relaxed avoids stubbing every method on complex mocks |
-| Not stubbing flows before ViewModel init | `init` block collects flows — they must be stubbed in `@Before` |
+| Not stubbing flows before ViewModel init | `init` block collects flows — they must be stubbed in `@BeforeEach` |
+| Using JUnit 4 annotations with JUnit 6 | `@Before` → `@BeforeEach`, `@get:Rule` → `@JvmField @RegisterExtension` |

@@ -9,6 +9,15 @@ user-invocable: false
 > **ABSOLUTE HARD RULE — NO ATLASSIAN MCP. EVER.**
 > NEVER use `mcp__claude_ai_Atlassian__*` or ANY Atlassian MCP tool. ALL Jira operations MUST use ACLI (`acli`), curl + REST API, or `gh` CLI. No exceptions. No fallbacks to MCP. Ever.
 
+## Step 0: Parse Arguments
+
+If arguments include time and/or date (passed from finish-task or user):
+- Parse time: `10m`, `1h`, `30m`, `2h30m`, `2h 30m`
+- Parse date: `YYYY-MM-DD` or `today` (default)
+- If both provided: skip Steps 2 and 5 (time and date prompts), go directly to Step 3 validation then Step 4/6
+- If only time provided: use today's date, skip Step 2
+- If neither: run full interactive flow
+
 ## Overview
 
 Add a worklog entry to a Jira ticket to track time spent. Supports viewing existing worklogs, adding descriptions, and date overrides. Uses curl + Jira REST API v3 directly (ACLI does not support worklog operations).
@@ -24,9 +33,10 @@ If any check fails: **REQUIRED:** Auto-run the `android:jira-setup` skill inline
 
 Before adding a new entry, show what's already been logged to avoid duplicates.
 
-Fetch worklogs via ACLI:
+Fetch worklogs via REST API (do NOT use ACLI for worklog operations — its flags are unreliable):
 ```bash
-acli jira workitem view <TICKET-ID> --json --fields "worklog,timetracking"
+source ~/.jira-config && curl -s -u "$JIRA_EMAIL:$JIRA_TOKEN" \
+  "https://$JIRA_SITE/rest/api/3/issue/<TICKET-ID>?fields=worklog,timetracking"
 ```
 
 From the JSON output:
@@ -106,7 +116,7 @@ From the commit list:
 - Implemented SafeWebViewClient with HTTPS enforcement and domain allowlist (OWASP M1/M8)
 - Applied SafeWebViewClient in WebViewScreen and WebViewLauncher; tightened initial URL validation to HTTPS-only
 - Added 9 unit tests covering all acceptance criteria scenarios
-PR: https://github.com/dmdbrands/meApp/pull/1583
+PR: https://github.com/OWNER/REPO/pull/NNN
 ```
 
 Present the generated description to the user for confirmation:
@@ -186,7 +196,8 @@ curl -s -w "\n%{http_code}" -X POST \
 After logging, fetch updated time tracking:
 
 ```bash
-acli jira workitem view <TICKET-ID> --json --fields "timetracking"
+source ~/.jira-config && curl -s -u "$JIRA_EMAIL:$JIRA_TOKEN" \
+  "https://$JIRA_SITE/rest/api/3/issue/<TICKET-ID>?fields=timetracking"
 ```
 
 Present:

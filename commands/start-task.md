@@ -48,6 +48,31 @@ This will:
 
 **Do not proceed until requirements are confirmed as clear.**
 
+## Step 2b: Check for Subtasks
+
+After fetching the ticket, check if it has subtasks:
+
+```bash
+source ~/.jira-config && curl -s -u "$JIRA_EMAIL:$JIRA_TOKEN" \
+  "https://$JIRA_SITE/rest/api/3/issue/<TICKET-ID>?fields=subtasks" \
+  | python3 -c "import json,sys; subtasks=json.load(sys.stdin).get('fields',{}).get('subtasks',[]); [print(f'{s[\"key\"]}: {s[\"fields\"][\"summary\"]} ({s[\"fields\"][\"status\"][\"name\"]})') for s in subtasks]"
+```
+
+**If subtasks found:**
+> This ticket has N subtasks:
+> 1. TICKET-1: Summary (Status)
+> 2. TICKET-2: Summary (Status)
+> ...
+>
+> Work through them one by one? (yes / no — just work on parent)
+
+If yes:
+- Create parent branch first (if not exists)
+- For each subtask: create branch from parent, implement, PR to parent, worklog, transition
+- Track progress across subtasks
+
+**If no subtasks:** Continue normally.
+
 If design references were found and user wants to view them:
 **REQUIRED:** Use the `android:design-reference` skill to open and capture the designs. This provides visual context for implementation.
 
@@ -72,7 +97,11 @@ Warn but don't block — the user may be pairing or taking over.
 
 ## Step 4: Review Time Estimate
 
-**REQUIRED:** Use the `android:jira-estimating` skill.
+**If ticket type is "Subtask":**
+- If no estimate exists: skip this step silently
+- If estimate exists: display but don't prompt to change
+
+**Otherwise:** Use the `android:jira-estimating` skill.
 
 This will:
 - Show current estimate and story points
@@ -134,7 +163,19 @@ If yes:
 git checkout -b <branch-name>
 ```
 
-**Base branch:** Create from the latest main/dev branch:
+**Base branch detection:**
+
+1. If ticket is a subtask (has `parent` field in Jira response):
+   ```bash
+   git branch -r --list "*<PARENT-TICKET-ID>*"
+   ```
+   If parent branch found:
+   > This is a subtask of <PARENT-ID>. Use `<parent-branch>` as base? (yes / use main)
+
+   Default: use parent branch for subtasks.
+
+2. Otherwise: create from the latest main/dev branch:
+
 ```bash
 git fetch origin <base-branch>
 git checkout -b <branch-name> origin/<base-branch>
@@ -179,16 +220,11 @@ After implementation is complete (user confirms they're done or says "finish", "
 
 ## Step 9: Self-Review Checklist
 
-Before running automated verification, prompt a self-review using the checklist from `android:android-procedures` (the `review-checklist` sub-skill).
+Before running automated verification, prompt a self-review using the checklist from the loaded procedures (Step 7). If procedures were loaded, use their project-specific `review-checklist` sub-skill. If no procedures loaded, use this generic checklist:
 
 > **Pre-verification checklist:**
-> - [ ] All interfaces use `I` prefix?
-> - [ ] No `!!` operators anywhere in changed files?
-> - [ ] Compose previews use `@PreviewTheme` + `MeAppTheme { }`?
-> - [ ] No hardcoded colors, typography, or spacing?
-> - [ ] `AppLog` used instead of `Log`/`Timber`?
-> - [ ] `super.handleIntent(intent)` called first in ViewModel?
-> - [ ] All API methods are `suspend`?
+> - [ ] Followed project architecture and naming conventions?
+> - [ ] No banned operators or patterns in changed files?
 > - [ ] Removed debug code, TODOs, and commented-out code?
 > - [ ] No secrets or credentials in the diff?
 >
