@@ -263,13 +263,17 @@ For **every method** identified in Step 2.2 (ordered by priority), write tests c
 Normal successful execution with valid inputs.
 
 ```kotlin
+// companion object {
+//     private const val ACCOUNT_ID = "acc-123"
+//     private const val NETWORK_ERROR = "Network error"
+//     private const val DB_ERROR = "DB error"
+//     private const val API_ERROR = "API error"
+// }
+
 @Test
 fun `getUser returns user when API succeeds`() = runTest {
-    // Arrange
     coEvery { userApi.getUser(ACCOUNT_ID) } returns mockUser
-    // Act
     val result = sut.getUser(ACCOUNT_ID)
-    // Assert
     assertThat(result).isEqualTo(mockUser)
 }
 ```
@@ -282,14 +286,12 @@ Exception handling, API failures, null responses.
 ```kotlin
 @Test
 fun `getUser throws when API fails`() = runTest {
-    // Arrange
-    coEvery { userApi.getUser(any()) } throws RuntimeException("Network error")
-    // Act & Assert
+    coEvery { userApi.getUser(any()) } throws RuntimeException(NETWORK_ERROR)
     try {
         sut.getUser(ACCOUNT_ID)
         fail("Expected exception")
     } catch (e: RuntimeException) {
-        assertThat(e.message).isEqualTo("Network error")
+        assertThat(e.message).isEqualTo(NETWORK_ERROR)
     }
 }
 ```
@@ -322,12 +324,12 @@ fun `userFlow delegates to dataStore userFlow`() = runTest {
 
 @Test
 fun `userFlow handles error in upstream`() = runTest {
-    every { dataStore.userFlow } returns flow { throw RuntimeException("DB error") }
+    every { dataStore.userFlow } returns flow { throw RuntimeException(DB_ERROR) }
     try {
         sut.userFlow.first()
         fail("Expected exception")
     } catch (e: RuntimeException) {
-        assertThat(e.message).isEqualTo("DB error")
+        assertThat(e.message).isEqualTo(DB_ERROR)
     }
 }
 ```
@@ -351,13 +353,15 @@ Verify state isn't left half-updated when an error occurs mid-operation:
 ```kotlin
 @Test
 fun `saveUser does not update cache when API fails`() = runTest {
-    coEvery { userApi.saveUser(any()) } throws RuntimeException("API error")
+    coEvery { userApi.saveUser(any()) } throws RuntimeException(API_ERROR)
     try {
         sut.saveUser(mockUser)
     } catch (_: RuntimeException) { }
     coVerify(exactly = 0) { userDao.insert(any()) }
 }
 ```
+
+> **NOTICE:** Every example above uses constants (`ACCOUNT_ID`, `NETWORK_ERROR`, `DB_ERROR`, `API_ERROR`) — never inline strings. Your generated tests MUST do the same. If you catch yourself writing a literal string inside a test body, stop and add it to `companion object` first.
 
 ### 4.4 Type-Specific Patterns
 
@@ -474,6 +478,8 @@ Read the error output and match against known patterns:
 
 **Fix → re-run → repeat until all tests pass.**
 
+**IMPORTANT:** When fixing tests, any new string/numeric literals you add (e.g., mock return values, expected values) MUST go into `companion object` as constants. Never introduce inline literals during fixes.
+
 Maximum retry loops: 5. If still failing after 5 attempts:
 > Tests still failing after 5 fix attempts. Remaining errors:
 > [error details]
@@ -520,16 +526,21 @@ Scan existing tests for weak assertions that don't actually verify behavior:
 
 Strengthen weak assertions where possible.
 
+**IMPORTANT:** When strengthening assertions, any new expected values you introduce (e.g., `isEqualTo("expected")`, `hasSize(5)`) MUST use constants from `companion object`. Never add inline literals during this step.
+
 ### 7.4 Coverage Gap Iteration
 
 If there are **coverable** gaps remaining (after filtering unreachable):
 
 1. Identify the specific uncovered methods/branches/lines
 2. Write additional tests targeting those gaps
-3. Run tests (Step 6 loop)
-4. Re-run JaCoCo
-5. Check again
-6. Repeat until no more coverable gaps
+3. **Re-run Step 5 (Extract Constants — BLOCKING GATE)** on the entire test file — new tests MUST have constants extracted before proceeding
+4. Run tests (Step 6 loop)
+5. Re-run JaCoCo
+6. Check again
+7. Repeat until no more coverable gaps
+
+> **CRITICAL:** Step 3 is not optional. Every time new tests are added — whether in the initial write or during coverage iteration — the full constant extraction gate (Step 5) must be re-run on the entire file. No exceptions.
 
 **Maximum iterations:** 3. If still gaps after 3 rounds, document remaining gaps and stop.
 
