@@ -436,6 +436,23 @@ fun `userFlow handles error in upstream`() = runTest {
 }
 ```
 
+#### E2. Multiple Flow Testing (turbineScope)
+For classes with multiple flows that update together, use `turbineScope`:
+```kotlin
+@Test
+fun `refresh updates both flows`() = runTest {
+    turbineScope {
+        val items = sut.itemsFlow.testIn(this)
+        val status = sut.statusFlow.testIn(this)
+        sut.refresh()
+        assertThat(items.awaitItem()).hasSize(3)
+        assertThat(status.awaitItem()).isEqualTo(Status.LOADED)
+        items.cancelAndIgnoreRemainingEvents()
+        status.cancelAndIgnoreRemainingEvents()
+    }
+}
+```
+
 #### F. Side Effect Verification
 For command methods (methods that DO something):
 
@@ -463,15 +480,33 @@ fun `saveUser does not update cache when API fails`() = runTest {
 }
 ```
 
+#### H. State Preservation (Reducers)
+For reducer tests, verify unrelated fields are NOT modified:
+```kotlin
+@Test
+fun `SetLoading only changes isLoading`() {
+    val initial = state.copy(items = listOf(testItem), error = ERROR_MSG)
+    val result = reducer.reduce(initial, Intent.SetLoading(true))
+    assertThat(result?.isLoading).isTrue()
+    assertThat(result?.items).isEqualTo(initial.items)  // preserved
+    assertThat(result?.error).isEqualTo(initial.error)  // preserved
+}
+```
+
 > **Tip:** The examples above use constants for reusable values. Follow the same pattern for values used in 2+ tests.
 
 ### 4.4 Type-Specific Patterns
+
+> **Full pattern reference:** See `procedures/test-patterns.md` for detailed examples with code.
 
 #### Repository Tests
 - Mock APIs (strict or relaxUnitFun), DAOs (relaxUnitFun), DataStores (relaxUnitFun)
 - Test: API call → result mapping → cache/storage side effects
 - Test: API failure → exception propagation or fallback
 - Test: Flow delegation from DataStore
+- Test: insert-or-update branching (both paths) — see `test-patterns.md`
+- Test: request object construction via `slot<>()` + `capture()` — see `test-patterns.md`
+- Test: catch-and-swallow vs catch-and-rethrow — see `test-patterns.md`
 
 #### ViewModel Tests
 - Requires `MainDispatcherRule` — use `@JvmField @RegisterExtension` (JUnit 6) or `@get:Rule` (JUnit 4)
@@ -480,8 +515,11 @@ fun `saveUser does not update cache when API fails`() = runTest {
 - Otherwise: use `UnconfinedTestDispatcher` + `runTest` + `advanceUntilIdle()`
 - Test: `handleIntent(Intent.X)` → assert `state.value`
 - Test: navigation calls via `navigationService`
-- Test: dialog/toast calls via `dialogQueueService`
+- Test: dialog/toast callbacks via `slot<DialogModel>()` + `capture()` — see `test-patterns.md`
 - If project has `initTestDependencies()` (detected in Step 0.3b): call it after constructor
+- **Use `.value` for final-state assertions, Turbine only for intermediate emissions** — see `test-patterns.md`
+- **Never re-test reducer logic in ViewModel tests** — test side effects only. State changes belong in ReducerTest.
+- **Use `createViewModel()` factory** when flow stubs must be set before construction — see `test-patterns.md`
 
 #### Reducer Tests
 - **No mocks needed** — pure function testing
@@ -489,12 +527,16 @@ fun `saveUser does not update cache when API fails`() = runTest {
 - Test every intent in the `when` block
 - Test: unhandled intent returns `null` or `state.copy()`
 - Test: state transitions (e.g., loading → loaded → error)
+- **Verify state preservation** — assert unrelated fields are NOT modified by each intent — see `test-patterns.md`
+- Test: side-effect-only intents must return `null` from reducer
 
 #### Service Tests
 - Mock repositories and other services
 - Test: business logic, calculations, data transformations
 - Test: orchestration (calls A, then B, then C in order)
 - Test: error handling and fallback behavior
+- Test: network guard clauses — hard throw vs soft check — see `test-patterns.md`
+- **Use `createService()` factory** when flow stubs must be set before construction — see `test-patterns.md`
 
 ### 4.5 Test Isolation
 
@@ -570,7 +612,7 @@ Re-scan test methods. If any repeated literal (used 2+ times) or numeric test da
 
 ### 6.3 If Tests Fail → Diagnose and Fix
 
-Read the error output and match against known patterns:
+Read the error output and match against known patterns. For the full 35+ entry lookup table, see `procedures/test-troubleshooting.md`. Common patterns:
 
 | Error Pattern | Diagnosis | Fix |
 |--------------|-----------|-----|
@@ -625,9 +667,13 @@ Parse the XML report for this specific class. Extract:
 - Methods: covered / total
 - Per-method and per-line breakdown of what's uncovered
 
+### 7.1b Method-Level Analysis
+
+After class-level coverage, check per-method breakdown to find fully uncovered methods hidden by overall percentage. See `procedures/test-coverage.md` for the Python script.
+
 ### 7.2 Smart Filter — Exclude Unreachable
 
-Analyze each uncovered item against the source code:
+Analyze each uncovered item against the source code. See `procedures/test-coverage.md` for the full JaCoCo 0.8.14+ false positives table.
 
 | Unreachable Pattern | How to Detect | Action |
 |--------------------|--------------|--------|

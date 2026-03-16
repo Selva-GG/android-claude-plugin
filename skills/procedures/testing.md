@@ -1,6 +1,7 @@
 # Testing
 
-> For the full automated test-writing workflow (with JaCoCo coverage analysis), use `/android:write-tests`. This file serves as a quick reference for testing patterns.
+> For the full automated test-writing workflow, use `/android:write-tests`. This file is a quick reference.
+> See also: `test-patterns.md` (reusable patterns), `test-troubleshooting.md` (error fixes), `test-coverage.md` (JaCoCo).
 
 ## Setup
 
