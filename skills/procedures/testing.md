@@ -121,7 +121,7 @@ class GoalViewModelTest {
         viewModel.handleIntent(GoalIntent.Submit)
         advanceUntilIdle()
 
-        assertNotNull(viewModel.state.value.error)
+        assertThat(viewModel.state.value.error).isNotNull()
     }
 }
 ```
@@ -253,7 +253,7 @@ class FooServiceTest {
 
         val result = service.processAndSaveFoo(FooInput(weight = 70.0))
 
-        assertTrue(result.isSuccess)
+        assertThat(result.isSuccess).isTrue()
         coVerify { fooRepository.saveFoo(match { it.weight != 70.0 }) } // Converted
     }
 }
@@ -308,10 +308,10 @@ fun `observeFoos emits updated list`() = runTest {
 
     repository.observeFoos().test {
         flow.emit(listOf(testFoo))
-        assertEquals(listOf(testFoo), awaitItem())
+        assertThat(awaitItem()).isEqualTo(listOf(testFoo))
 
         flow.emit(emptyList())
-        assertEquals(emptyList(), awaitItem())
+        assertThat(awaitItem()).isEmpty()
 
         cancelAndIgnoreRemainingEvents()
     }

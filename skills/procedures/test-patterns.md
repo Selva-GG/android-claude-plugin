@@ -12,13 +12,13 @@ fun `delete shows confirm dialog and deletes on confirm`() {
     val dialogSlot = slot<DialogModel.Confirm>()
 
     viewModel.handleIntent(Intent.Delete(itemId))
-    advanceScheduler()
+    advanceScheduler() // or advanceUntilIdle() if no infinite init coroutines
 
     verify { dialogQueueService.enqueue(capture(dialogSlot)) }
 
     // Invoke the captured callback
     dialogSlot.captured.onConfirm?.invoke()
-    advanceScheduler()
+    advanceScheduler() // or advanceUntilIdle()
 
     coVerify { service.delete(itemId) }
 }
@@ -77,8 +77,12 @@ fun `Submit sets isLoading true`() {  // This belongs in ReducerTest!
 
 ## SUT Re-creation Pattern
 
-When testing classes that collect Flows in their `init` block, stubs must be set BEFORE construction. Use a factory method:
+> Examples use JUnit 6 annotations. For JUnit 4 equivalents, see the mapping table in `write-tests.md` Step 0.2b.
+> `advanceScheduler()` is for ViewModels with infinite init coroutines; use `advanceUntilIdle()` inside `runTest {}` otherwise.
 
+When testing classes that collect Flows in their `init` block, stubs must be set BEFORE construction. Use a factory method.
+
+### ViewModel factory
 ```kotlin
 private fun createViewModel(
     items: Flow<List<Item>> = flowOf(emptyList()),
@@ -105,6 +109,25 @@ fun `handles null account`() {
 ```
 
 **When to use:** Any class where `init {}` calls `viewModelScope.launch { flow.collect { } }`. You cannot re-stub after construction — the init already captured the old stub.
+
+### Service factory
+```kotlin
+private fun createService(
+    network: Flow<NetworkState> = flowOf(NetworkState.Available),
+    account: Flow<Account?> = flowOf(testAccount),
+): FooService {
+    every { connectivityObserver.observe() } returns network
+    every { accountService.activeAccountFlow } returns account
+    return FooService(repository, connectivityObserver, accountService)
+}
+
+@Test
+fun `sync skips when offline`() = runTest {
+    val svc = createService(network = flowOf(NetworkState.Unavailable))
+    svc.syncData()
+    coVerify(exactly = 0) { repository.upload(any()) }
+}
+```
 
 ---
 
@@ -139,6 +162,16 @@ fun `SetLoading only changes isLoading`() {
 ## Network Guard Clause Patterns
 
 Services often have two network check patterns:
+
+Define a shared helper for network stubs:
+```kotlin
+private fun stubNetworkUnavailable() {
+    every { connectivityObserver.isNetworkAvailable } returns false
+}
+private fun stubNetworkAvailable() {
+    every { connectivityObserver.isNetworkAvailable } returns true
+}
+```
 
 ### Hard throw (`requireNetworkAvailable()`)
 Throws if offline — test that exception propagates:
@@ -262,9 +295,35 @@ fun `sync logs error but does not throw on API failure`() = runTest {
 ```kotlin
 @Test
 fun `fetch rethrows API exception`() = runTest {
-    coEvery { api.fetch() } throws HttpException(mockResponse(500))
+    coEvery { api.fetch() } throws RuntimeException("Server error")
     assertThrows<HttpException> { service.fetchData() }
 }
 ```
 
 **Key:** Read the source to determine which pattern is used. Test accordingly.
+
+---
+
+## turbineScope for Multiple Flows
+
+When testing a class that emits on multiple flows simultaneously, use `turbineScope` + `testIn`:
+
+```kotlin
+@Test
+fun `refresh updates both items and status flows`() = runTest {
+    turbineScope {
+        val items = viewModel.itemsFlow.testIn(this)
+        val status = viewModel.statusFlow.testIn(this)
+
+        viewModel.refresh()
+
+        assertThat(items.awaitItem()).hasSize(3)
+        assertThat(status.awaitItem()).isEqualTo(Status.LOADED)
+
+        items.cancelAndIgnoreRemainingEvents()
+        status.cancelAndIgnoreRemainingEvents()
+    }
+}
+```
+
+**When to use:** Testing ViewModels or services that expose multiple `StateFlow`/`SharedFlow` properties that update together. Since Turbine 1.0.0+, nested `.test {}` blocks don't coordinate — use `turbineScope` instead.

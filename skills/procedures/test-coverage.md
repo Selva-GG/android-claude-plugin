@@ -69,26 +69,4 @@ Document these exclusions in the coverage report:
 | Hardware ViewModel | 50% | 30% | 50% | Imports contain BLE/WiFi/Bluetooth classes, or class > 800 lines |
 | Generated code | Skip | Skip | Skip | Hilt Factory, data class methods, Compose compiler |
 
-## turbineScope for Multiple Flows
-
-When testing a class that emits on multiple flows simultaneously:
-
-```kotlin
-@Test
-fun `refresh updates both items and status flows`() = runTest {
-    turbineScope {
-        val items = viewModel.itemsFlow.testIn(this)
-        val status = viewModel.statusFlow.testIn(this)
-
-        viewModel.refresh()
-
-        assertThat(items.awaitItem()).hasSize(3)
-        assertThat(status.awaitItem()).isEqualTo(Status.LOADED)
-
-        items.cancelAndIgnoreRemainingEvents()
-        status.cancelAndIgnoreRemainingEvents()
-    }
-}
-```
-
-**When to use:** Testing ViewModels or services that expose multiple `StateFlow`/`SharedFlow` properties that update together.
+> For `turbineScope` multiple-flow testing pattern, see `test-patterns.md`.
