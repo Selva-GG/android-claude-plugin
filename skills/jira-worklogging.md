@@ -143,28 +143,41 @@ Validate:
 - Cannot be in the future
 - Cannot be more than 30 days in the past (Jira may reject it)
 
-Format for API: `"started": "2026-03-10T09:00:00.000+0000"` (ISO 8601)
+Format for API: Use the **local machine timestamp** with local timezone offset. Generate with:
+```bash
+date +"%Y-%m-%dT%H:%M:%S.000%z"
+```
+Example output: `"started": "2026-03-18T09:00:00.000+0530"` — NEVER use UTC (`+0000`). Always use the local timezone offset.
 
 ## Step 6: Add Worklog via REST API
 
 The Jira REST API v3 requires ADF (Atlassian Document Format) for the comment field.
 
+**MANDATORY: Always generate and include the local timestamp.** Never omit `started` — Jira defaults to server time which may be a different timezone.
+
 ```bash
 source ~/.jira-config
+LOCAL_TS=$(date +"%Y-%m-%dT%H:%M:%S.000%z")
 curl -s -w "\n%{http_code}" -X POST \
   -H "Authorization: Basic $(echo -n "$JIRA_EMAIL:$JIRA_TOKEN" | base64)" \
   -H "Content-Type: application/json" \
   "https://$JIRA_SITE/rest/api/3/issue/<TICKET-ID>/worklog" \
-  -d '{
-    "timeSpentSeconds": <SECONDS>,
-    "comment": {
-      "version": 1,
-      "type": "doc",
-      "content": [{"type": "paragraph", "content": [{"type": "text", "text": "<DESCRIPTION>"}]}]
+  -d "{
+    \"timeSpentSeconds\": <SECONDS>,
+    \"comment\": {
+      \"version\": 1,
+      \"type\": \"doc\",
+      \"content\": [{\"type\": \"paragraph\", \"content\": [{\"type\": \"text\", \"text\": \"<DESCRIPTION>\"}]}]
     },
-    "started": "<ISO_DATE>"
-  }'
+    \"started\": \"$LOCAL_TS\"
+  }"
 ```
+
+**Timestamp rules (MANDATORY — no exceptions):**
+- ALWAYS include `started` field — NEVER omit it
+- ALWAYS use local machine time: `date +"%Y-%m-%dT%H:%M:%S.000%z"`
+- NEVER use UTC (`+0000`) — always use the local timezone offset
+- For date overrides, append the local timezone offset: `2026-03-10T09:00:00.000+0530` (use `date +%z` to get offset)
 
 **ADF comment format notes:**
 - The comment MUST use ADF format for REST API v3 — plain strings will be rejected
@@ -176,7 +189,6 @@ curl -s -w "\n%{http_code}" -X POST \
     {"type": "paragraph", "content": [{"type": "text", "text": "Line 2"}]}
   ]
   ```
-- If the `started` field is omitted, Jira uses the current time
 
 **Parse the response:**
 - Extract the HTTP status code from the `-w "\n%{http_code}"` output
@@ -222,3 +234,4 @@ Present:
 | Omitting PR URL from worklog | Always append `PR: <URL>` to description if a PR was created in this session |
 | Forgetting to source ~/.jira-config | Always source before curl calls to get credentials |
 | Telling user to run jira-setup manually | Auto-run the setup skill inline — user should never see "run /android:jira-setup" |
+| Using UTC or omitting `started` field | ALWAYS include `started` with local timestamp (`date +"%Y-%m-%dT%H:%M:%S.000%z"`) — never UTC, never omit |
