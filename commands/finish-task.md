@@ -1,17 +1,17 @@
 ---
 name: finish-task
-description: Complete task — self-review checklist, verify build/tests/lint, check branch freshness, create PR, log work, link to Jira, transition to In Review
+description: Complete task — run 4 parallel validation agents, fix issues, create PR, log work, transition to In Review (Steps 5-6 standalone)
 ---
 
 # Finish Task
 
-You are completing work on a Jira ticket. Follow each step in order. Every external action requires user confirmation. Do not skip steps.
+You are completing work on a Jira ticket. This runs Steps 5-6 (validate + finalize) of the pipeline. Use this when you started work manually without `/android:start-task`.
 
 **HARD RULE — No MCP Tools:** Never use `mcp__claude_ai_Atlassian__*` or any MCP Atlassian tools. All Jira operations MUST use ACLI (`acli`), curl + REST API, or `gh` CLI. If ACLI is not authenticated, auto-run the `android:jira-setup` skill inline — do NOT fall back to MCP.
 
-### Prerequisites
+## Prerequisites
 
-Check if GitHub CLI is available and authenticated:
+Check GitHub CLI:
 ```bash
 which gh && gh auth status
 ```
@@ -19,90 +19,51 @@ If either check fails: **REQUIRED:** Use the `android:gh-setup` skill.
 
 ## Step 1: Identify Jira Ticket
 
-Extract the Jira ticket ID from the current branch name:
+Extract ticket ID from current branch:
 ```bash
 git branch --show-current
 ```
-
-Parse the ticket ID pattern (e.g., `MA-3353` from `MA-3353-add-staging-build-type`).
-Regex: `([A-Z]+-[0-9]+)` — match the first occurrence.
+Parse: `([A-Z]+-[0-9]+)` — match the first occurrence.
 
 **If unable to extract:**
 > Could not detect Jira ticket from branch name `[branch]`. What is the ticket ID?
 
-## Step 2: Discover Project Procedures
+## Step 2: Load Procedures
 
-Walk up from the current working directory to the project root. At each level, check for procedure files:
+**REQUIRED:** Use the `android:android-procedures` skill to load project conventions.
 
-```
-Check: <current-dir>/.claude/skills/procedures.md
-Check: <current-dir>/.claude/skills/procedures-*.md    (e.g., procedures-android.md, procedures-ios.md)
-Check: <parent-dir>/.claude/skills/procedures.md
-Check: <parent-dir>/.claude/skills/procedures-*.md
-... (continue up to filesystem root or home directory)
-```
-
-**If exactly 1 file found:** Load it automatically.
-
-**If multiple files found:** **ALWAYS ask the user. Never auto-select. Never recommend. Never assume based on working directory.** Present all options equally and wait:
-
-> **Multiple procedure files found:**
->
-> | # | Path | Type |
-> |---|------|------|
-> | 1 | `Android/.claude/skills/procedures.md` | Android |
-> | 2 | `iOS/.claude/skills/procedures.md` | iOS |
->
-> Which procedures should I follow? (number, or multiple like "1,2")
-
-**If found:** The loaded procedures will be used for:
-- Project-specific review checklist (Step 2b)
-- Build/test/lint commands (Step 3 — supplements verifying-build skill)
+These provide:
+- Project-specific review checklist
+- Build/test/lint commands
 - Conventions to verify against
 
-**If NOT found:** Use generic checklist below.
+## Step 3: Self-Review Checklist
 
-## Step 2b: Self-Review Checklist
-
-Before running automated verification, prompt a self-review.
-
-**If procedures.md was loaded** — use the review checklist from procedures.md. It should define project-specific checks (e.g., "All interfaces use `I` prefix", "No `!!` operators", "Compose previews use @PreviewTheme").
-
-Present the project-specific checklist items PLUS these universal checks:
+Before running automated validation, prompt a self-review using the loaded procedures. Use the `shared/review-checklist.md` from procedures:
 
 > **Pre-verification checklist:**
-> [Project-specific items from procedures.md review section]
+> [Project-specific items from review-checklist.md]
 > - [ ] Removed debug code, TODOs, and commented-out code?
 > - [ ] No secrets or credentials in the diff?
 >
-> Proceed with verification? (yes / let me fix something first)
-
-**If no procedures.md** — use the generic checklist:
-
-> **Pre-verification checklist** — have you:
-> - [ ] Handled edge cases and error scenarios?
-> - [ ] Added or updated tests for your changes?
-> - [ ] Removed debug code, TODOs, and commented-out code?
-> - [ ] Checked that no secrets or credentials are in the diff?
-> - [ ] Followed the project's architecture and naming conventions?
->
-> Proceed with verification? (yes / let me fix something first)
+> Proceed with validation? (yes / let me fix something first)
 
 If user wants to fix something, wait for them to return.
 
-## Step 3: Verify Build + Tests + Lint
+## Step 4: Validate (parallel agents)
 
-**REQUIRED:** Use the `android:verifying-build` skill.
+Run the validation flow — same logic as `/android:validate`:
 
-This will:
-- Discover build commands from CLAUDE.md or auto-detect project type
-- Run build, tests, and lint sequentially
-- Report results with durations
-- Loop until all pass
+1. Spawn 4 agents in parallel: test-runner, lint-analyzer, code-reviewer, spec-checker
+2. Merge findings by severity (critical → warning → info)
+3. Fix critical issues, then warnings
+4. Re-validate until all pass (or 3+ failures → show all issues, let user decide)
 
-**Do not proceed until all checks pass.**
+See `commands/validate.md` for the full validation flow.
 
-## Step 4: Check Branch Freshness
+**Do not proceed until validation passes.**
+
+## Step 5: Check Branch Freshness
 
 ```bash
 git fetch origin
@@ -115,28 +76,24 @@ git log HEAD..origin/<base-branch> --oneline | wc -l
 
 If behind:
 > Your branch is [N commits] behind `[base-branch]`.
->
-> - Rebase onto `[base-branch]` (recommended — cleaner history)
+> - Rebase onto `[base-branch]` (recommended)
 > - Merge `[base-branch]` into your branch
-> - Skip (may cause conflicts in PR)
+> - Skip
 
 If user chooses rebase/merge:
 1. Execute the rebase/merge
-2. **Re-run verification** (Step 3) — the merge may introduce failures
-3. Only proceed once verification passes again
+2. **Re-run Step 4 validation** — the merge may introduce failures
+3. Only proceed once validation passes again
 
 ### Stale branch?
 ```bash
 git log -1 --format="%ci" HEAD
 ```
 
-If last commit is more than 7 days old:
-> ⚠ Last commit on this branch was [N days] ago. The codebase may have changed significantly.
-> Consider rebasing before creating a PR.
+If last commit is >7 days old:
+> Last commit on this branch was [N days] ago. Consider rebasing before PR.
 
-## Step 5: Show Diff Summary
-
-Before PR creation, show what will be included:
+## Step 6: Show Diff Summary
 
 ```bash
 git diff <base-branch>..HEAD --stat
@@ -144,65 +101,44 @@ git log <base-branch>..HEAD --oneline
 ```
 
 > **Changes to include in PR:**
-> - **Commits:** [N commits]
-> - **Files changed:** [N files] (+[insertions], -[deletions])
+> - **Commits:** [N]
+> - **Files changed:** [N] (+insertions, -deletions)
 >
 > [File list from --stat]
 >
-> [If sensitive files changed:]
-> ⚠ **Sensitive files modified:** [build.gradle, CI config, migration, etc.]
->
 > Proceed to create PR? (yes / no — let me review)
 
-## Step 6: Create Pull Request
+## Step 7: Create Pull Request
 
-Ask the user:
+Ask:
 > Create a Pull Request? (yes / no)
 
 If yes:
 
-**Coverage data handoff:** If `android:write-tests` was run in this session, coverage tables are in session context. Pass them to `android:creating-pr` so they're auto-included in the PR body under a "## Coverage" section.
+**Coverage data handoff:** If `android:write-tests` was run in this session, pass coverage tables to `android:creating-pr`.
 
 **REQUIRED:** Use the `android:creating-pr` skill.
 
-This will:
-- Check for uncommitted changes
-- Determine and confirm base branch
-- Check branch freshness (may be redundant with Step 4 — skip if already done)
-- Push branch if needed
-- Confirm PR title, reviewers, labels, draft status
-- Create PR with Jira-prefixed title, summary, test plan, and coverage tables
-- Return the PR URL
+If no: skip to Step 8.
 
-If no: skip to Step 7.
-
-## Step 7: Log Work Time
+## Step 8: Log Work Time
 
 **REQUIRED:** Use the `android:jira-worklogging` skill.
 
-This will:
-- Show existing worklogs
-- Ask if user wants to log time
-- Accept time input with optional description
-- Submit worklog to Jira
-- Show updated totals
+## Step 9: Transition to In Review
 
-## Step 8: Transition to In Review
+**If PR was created:** Auto-transition using `android:jira-transitioning` skill. Target: **In Review**.
 
-**If a PR was created in Step 6:** Auto-transition to "In Review" without asking. Use the `android:jira-transitioning` skill with target status: **In Review**.
-
-**If no PR was created:** Ask:
+**If no PR:**
 > No PR was created. Still move ticket to "In Review"? (yes / no — keep as In Progress)
 
-## Step 9: Final Summary
-
-Present the completion summary with all actions taken:
+## Step 10: Final Summary
 
 > **Task Complete: [TICKET-ID] — [Summary]**
 >
 > | Action | Result |
 > |--------|--------|
-> | Verification | All passed (Build, Tests, Lint) |
+> | Verification | All passed (Tests, Lint, Review, Spec) |
 > | PR | [URL] or Skipped |
 > | Work Logged | [time] or Skipped |
 > | Status | [In Review / In Progress / unchanged] |
@@ -216,7 +152,7 @@ Present the completion summary with all actions taken:
 - Offer to retry or skip the step
 - Track which steps were completed
 
-**If user wants to abort mid-flow:**
+**If user wants to abort:**
 > Task completion aborted. Current state:
 > - Verification: [passed/failed/not run]
 > - PR: [created at URL / not created]
@@ -225,11 +161,10 @@ Present the completion summary with all actions taken:
 >
 > You can resume with `/android:finish-task` later.
 
-**If verification keeps failing:**
-After 3 failed verification loops:
-> Verification has failed [N times]. Options:
-> - Continue fixing
-> - Skip verification and create PR as draft (mark as WIP)
-> - Abort and come back later
+**If verification keeps failing (3+ times):**
+Show ALL remaining findings from all 4 agents. Let user decide:
+- Fix specific issues
+- Skip remaining warnings and proceed
+- Abort and come back later
 
-Only allow draft PR on repeated failures — never skip verification for a ready-for-review PR.
+**Never auto-create a draft PR.** Always let the user decide.

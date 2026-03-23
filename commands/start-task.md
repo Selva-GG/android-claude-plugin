@@ -1,89 +1,133 @@
 ---
 name: start-task
-description: Full task lifecycle — fetches Jira details, validates requirements, updates estimate, creates branch, transitions to In Progress, implements following project procedures, then finishes with self-review, build verification, PR creation, worklog, and transition to In Review
+description: Full task lifecycle — 6-step orchestrator pipeline with parallel agent teams for gathering, validation, and finalization
 argument-hint: "[optional: TICKET-ID]"
 ---
 
 # Start Task
 
-You are beginning work on a Jira ticket. Follow each step in order. Every state change requires user confirmation. Do not skip steps.
+You are beginning work on a Jira ticket. Follow the 6-step orchestrator pipeline. Every state change requires user confirmation. Do not skip steps.
 
 **HARD RULE — No MCP Tools:** Never use `mcp__claude_ai_Atlassian__*` or any MCP Atlassian tools. All Jira operations MUST use ACLI (`acli`), curl + REST API, or `gh` CLI. If ACLI is not authenticated, auto-run the `android:jira-setup` skill inline — do NOT fall back to MCP.
 
-## Step 1: Get Jira Ticket ID
+---
 
-If an argument was provided (e.g., `/android:start-task MA-3353`), use it as the ticket ID.
+## Step 0: Get Ticket ID
 
-Otherwise ask the user:
-> What Jira ticket are you working on? (e.g., MA-3353)
+If an argument was provided (e.g., `/android:start-task MA-3523`), use it as the ticket ID.
 
-**Validate format:** Ticket ID should match pattern `[A-Z]+-[0-9]+` (e.g., MA-3353, PROJ-42). If it doesn't match, ask again.
+Otherwise ask:
+> What Jira ticket are you working on? (e.g., MA-3523)
 
-## Step 1.5: Verify CLI Setup
+**Validate format:** Ticket ID should match pattern `[A-Z]+-[0-9]+`. If it doesn't match, ask again.
 
-Verify ACLI is authenticated and config exists:
+## Step 0.5: Verify CLI Setup
+
+Verify ACLI is authenticated:
 ```bash
 acli jira auth status 2>&1 && test -f ~/.jira-config && source ~/.jira-config && test -n "$JIRA_TOKEN"
 ```
-If any check fails: **REQUIRED:** Auto-run the `android:jira-setup` skill inline — do not tell the user to run it manually. After setup completes, continue with the original task.
+If any check fails: **REQUIRED:** Auto-run the `android:jira-setup` skill inline.
 
-Check if GitHub CLI is available and authenticated:
+Check GitHub CLI:
 ```bash
 which gh && gh auth status
 ```
-If either check fails: **REQUIRED:** Use the `android:gh-setup` skill before proceeding.
+If either check fails: **REQUIRED:** Use the `android:gh-setup` skill.
 
-## Step 2: Fetch and Validate Task
+---
+
+## Step 1: Gather Context (parallel agents)
+
+Run these tasks in parallel:
+
+### Agent A: Fetch Jira Ticket
 
 **REQUIRED:** Use the `android:jira-fetching` skill.
 
 This will:
 - Retrieve all task details (summary, description, status, estimate, comments, links)
 - Parse ADF description into readable markdown
-- Present the full task summary to the user
-- Validate whether requirements are sufficient for implementation
-- Ask for clarification if description is incomplete
-- Detect Figma links and image attachments (design references)
-- If designs found, ask user if they want to view them
+- Validate whether requirements are sufficient
+- Detect Figma links and image attachments
+- Detect subtasks
 
 **Do not proceed until requirements are confirmed as clear.**
 
-## Step 2b: Check for Subtasks
+### Agent B: Fetch Designs (if applicable)
+
+If Agent A detected Figma links or design references:
+**REQUIRED:** Use the `android:design-reference` skill to open and capture designs.
+
+If no designs found: skip.
+
+### Agent C: Read Cache
+
+Check if `.claude/cache/` exists and is not stale:
+```bash
+if [ -f ".claude/cache/last-scan-timestamp" ]; then
+  cache_date=$(cat .claude/cache/last-scan-timestamp)
+  echo "Cache last refreshed: $cache_date"
+else
+  echo "No cache found"
+fi
+```
+
+If cache doesn't exist or is >7 days old:
+> Cache is stale or missing. Run `/android:refresh-cache` first? (yes / no — proceed without cache)
+
+If cache exists, read ONLY the cache files relevant to the Jira ticket keywords. Do not load all 7 files — match keywords from the ticket to determine which cache files are useful:
+- "repository", "data", "storage" → `repository-map.md`, `model-map.md`
+- "service", "manager", "logic" → `service-map.md`, `di-graph.md`
+- "screen", "UI", "component" → `component-catalog.md`, `feature-index.md`
+- "navigation", "route" → `route-map.md`
+- "new feature" (broad scope) → load all cache files
+
+### Check for Subtasks
 
 After fetching the ticket, check if it has subtasks:
-
 ```bash
 source ~/.jira-config && curl -s -u "$JIRA_EMAIL:$JIRA_TOKEN" \
   "https://$JIRA_SITE/rest/api/3/issue/<TICKET-ID>?fields=subtasks" \
-  | python3 -c "import json,sys; subtasks=json.load(sys.stdin).get('fields',{}).get('subtasks',[]); [print(f'{s[\"key\"]}: {s[\"fields\"][\"summary\"]} ({s[\"fields\"][\"status\"][\"name\"]})') for s in subtasks]"
+  | python3 -c "import json,sys; subtasks=json.load(sys.stdin).get('fields',{}).get('subtasks',[]); [print(f\"{s['key']}: {s['fields']['summary']} ({s['fields']['status']['name']})\") for s in subtasks]"
 ```
 
 **If subtasks found:**
 > This ticket has N subtasks:
 > 1. TICKET-1: Summary (Status)
 > 2. TICKET-2: Summary (Status)
-> ...
 >
-> Work through them one by one? (yes / no — just work on parent)
+> Gather and plan ONCE for the parent, then implement each subtask separately? (yes / no — just work on parent)
 
-If yes:
-- Create parent branch first (if not exists)
-- For each subtask: create branch from parent, implement, PR to parent, worklog, transition
-- Track progress across subtasks
+If yes: gather/plan covers all subtasks. Each subtask runs Steps 3-6 independently (own branch, own PR).
 
-**If no subtasks:** Continue normally.
+---
 
-If design references were found and user wants to view them:
-**REQUIRED:** Use the `android:design-reference` skill to open and capture the designs. This provides visual context for implementation.
+## Step 2: Analyse & Plan
 
-## Step 3: Check Assignment
+**REQUIRED:** Use the `android:analyse-plan` skill with all gathered context.
 
-After fetching the task, check the assignee field:
+This will:
+- Load relevant cache files and procedures dynamically
+- Run a runtime codebase scan
+- Perform deduplication check (FIND → UNDERSTAND → RECOMMEND → ASK)
+- Produce an implementation plan with affected layers and files
+- Ask user for confirmation
+
+**Do not proceed until the plan is confirmed by the user.**
+
+---
+
+## Step 3: Setup
+
+### 3a: Check Assignment
+
+Check the assignee field from the Jira ticket data (fetched in Step 1):
 
 **If unassigned:**
 > This ticket is unassigned. Assign it to yourself? (yes/no)
 
-If yes, assign using ACLI:
+If yes:
 ```bash
 acli jira workitem assign --key <TICKET-ID> --assignee @me
 ```
@@ -91,25 +135,17 @@ acli jira workitem assign --key <TICKET-ID> --assignee @me
 **If assigned to someone else:**
 > This ticket is assigned to [Name]. Continue anyway? (yes/no)
 
-Warn but don't block — the user may be pairing or taking over.
-
 **If assigned to the user:** Proceed silently.
 
-## Step 4: Review Time Estimate
+### 3b: Review Time Estimate
 
 **If ticket type is "Subtask":**
-- If no estimate exists: skip this step silently
+- If no estimate exists: skip silently
 - If estimate exists: display but don't prompt to change
 
 **Otherwise:** Use the `android:jira-estimating` skill.
 
-This will:
-- Show current estimate and story points
-- Compare estimate with any time already spent
-- Ask user if the estimate needs updating
-- Update via Jira API if requested
-
-## Step 5: Transition to In Progress
+### 3c: Transition to In Progress
 
 **REQUIRED:** Use the `android:jira-transitioning` skill.
 
@@ -117,168 +153,90 @@ Target status: **In Progress**
 
 If already In Progress, inform the user and skip.
 
-## Step 6: Prepare Working Branch
+### 3d: Prepare Working Branch
 
-### Check current git state
+Check current git state:
 ```bash
 git status
 git branch --show-current
 ```
 
-**If there are uncommitted changes on the current branch:**
+**If uncommitted changes exist:**
 > You have uncommitted changes on `[current-branch]`. What should we do?
 > - Stash changes and switch
 > - Commit changes first
-> - Stay on current branch (skip branch creation)
+> - Stay on current branch
 
-### Check if a branch already exists for this ticket
+**Check if branch exists for this ticket:**
 ```bash
 git branch --list "*<TICKET-ID>*"
 git branch -r --list "*<TICKET-ID>*"
 ```
 
-**If a branch exists:**
-> A branch already exists for this ticket: `[branch-name]`
-> - Switch to it
-> - Create a new branch anyway
-> - Stay on current branch
+If branch exists: offer to switch to it.
 
-If switching, checkout the existing branch.
-
-### Create a new branch
-
-If no existing branch (or user wants a new one):
-
-Generate branch name from ticket:
-- Format: `<TICKET-ID>-<kebab-case-summary>`
-- Lowercase the ticket ID portion of the summary
-- Replace spaces and special chars with hyphens
-- Truncate to ~60 characters total
-- Example: `MA-3353-add-staging-build-type`
-
-> Create branch `[generated-name]`? (yes / use different name / stay on current branch)
-
-If yes:
-```bash
-git checkout -b <branch-name>
-```
-
-**Base branch detection:**
-
-1. If ticket is a subtask (has `parent` field in Jira response):
-   ```bash
-   git branch -r --list "*<PARENT-TICKET-ID>*"
-   ```
-   If parent branch found:
-   > This is a subtask of <PARENT-ID>. Use `<parent-branch>` as base? (yes / use main)
-
-   Default: use parent branch for subtasks.
-
-2. Otherwise: create from the latest main/dev branch:
+**Create new branch:**
+- Format: `<TICKET-ID>-<kebab-case-summary>` (truncated to ~60 chars)
+- **Base branch detection:**
+  - If subtask with parent ticket: look for parent branch, use as base
+  - Otherwise: use latest `dev` or `main`
 
 ```bash
 git fetch origin <base-branch>
 git checkout -b <branch-name> origin/<base-branch>
 ```
 
-## Step 7: Load Project Procedures
+---
 
-**REQUIRED:** Use the `android:android-procedures` skill.
+## Step 4: Implement
 
-This loads the Android project conventions, architecture rules, hard rules, and sub-skill guides bundled with this plugin.
+**REQUIRED:** Use the `android:implement-layers` skill with the confirmed plan from Step 2.
 
-## Step 8: Hand Off to Implementation
-
-Present the complete task context:
-
-> **Task ready for implementation:**
->
-> | | |
-> |---|---|
-> | **Ticket** | [TICKET-ID]: [Summary] |
-> | **Type** | [Story / Bug / Task] |
-> | **Priority** | [Priority] |
-> | **Status** | In Progress |
-> | **Estimate** | [Xh / X story points] |
-> | **Branch** | `[branch-name]` |
-> | **Procedures** | Android (from plugin) |
->
-> **Key requirements:**
-> - [Bullet 1 from acceptance criteria]
-> - [Bullet 2]
-> - [Bullet 3]
->
-> What would you like to work on first?
+The orchestrator follows the plan layer by layer:
+- Domain → Data → Core → Service → ViewModel → UI
+- Skips layers not affected
+- Loads relevant procedures per layer
+- Writes tests inline per layer
 
 **During implementation:** Follow the conventions and patterns defined in `android:android-procedures`. If it defines how to structure files, name classes, write tests, or handle specific patterns — follow those rules.
 
+When implementation is complete (user confirms "done", "finish", "ready for PR", etc.), proceed to Step 5.
+
 ---
 
-## Phase 2: Finishing the Task
+## Step 5: Validate
 
-After implementation is complete (user confirms they're done or says "finish", "done", "ready for PR", etc.), continue with the finishing flow automatically.
+Run the validation flow. This is the same logic as `/android:validate`:
 
-## Step 9: Self-Review Checklist
+1. Spawn 4 agents in parallel: test-runner, lint-analyzer, code-reviewer, spec-checker
+2. Merge findings by severity (critical → warning → info)
+3. Fix critical issues, then warnings
+4. Re-validate until all pass (or 3+ failures → ask user)
 
-Before running automated verification, prompt a self-review using the checklist from the loaded procedures (Step 7). If procedures were loaded, use their project-specific `review-checklist` sub-skill. If no procedures loaded, use this generic checklist:
+See `commands/validate.md` for the full validation flow.
 
-> **Pre-verification checklist:**
-> - [ ] Followed project architecture and naming conventions?
-> - [ ] No banned operators or patterns in changed files?
-> - [ ] Removed debug code, TODOs, and commented-out code?
-> - [ ] No secrets or credentials in the diff?
->
-> Proceed with verification? (yes / let me fix something first)
+**Do not proceed until validation passes.**
 
-If user wants to fix something, wait for them to return.
+---
 
-## Step 10: Verify Build + Tests + Lint
+## Step 6: Finalize
 
-**REQUIRED:** Use the `android:verifying-build` skill.
-
-This will:
-- Discover build commands from CLAUDE.md or auto-detect project type
-- Run build, tests, and lint sequentially
-- Report results with durations
-- Loop until all pass
-
-**Do not proceed until all checks pass.**
-
-## Step 11: Check Branch Freshness
+### 6a: Check Branch Freshness
 
 ```bash
 git fetch origin
-```
-
-### Behind base branch?
-```bash
 git log HEAD..origin/<base-branch> --oneline | wc -l
 ```
 
 If behind:
 > Your branch is [N commits] behind `[base-branch]`.
->
-> - Rebase onto `[base-branch]` (recommended — cleaner history)
+> - Rebase onto `[base-branch]`
 > - Merge `[base-branch]` into your branch
-> - Skip (may cause conflicts in PR)
+> - Skip
 
-If user chooses rebase/merge:
-1. Execute the rebase/merge
-2. **Re-run verification** (Step 10) — the merge may introduce failures
-3. Only proceed once verification passes again
+If user chooses rebase/merge: execute, then **re-run Step 5 validation**.
 
-### Stale branch?
-```bash
-git log -1 --format="%ci" HEAD
-```
-
-If last commit is more than 7 days old:
-> ⚠ Last commit on this branch was [N days] ago. The codebase may have changed significantly.
-> Consider rebasing before creating a PR.
-
-## Step 12: Show Diff Summary
-
-Before PR creation, show what will be included:
+### 6b: Show Diff Summary
 
 ```bash
 git diff <base-branch>..HEAD --stat
@@ -286,68 +244,42 @@ git log <base-branch>..HEAD --oneline
 ```
 
 > **Changes to include in PR:**
-> - **Commits:** [N commits]
-> - **Files changed:** [N files] (+[insertions], -[deletions])
+> - Commits: [N]
+> - Files changed: [N] (+insertions, -deletions)
 >
-> [File list from --stat]
->
-> [If sensitive files changed:]
-> ⚠ **Sensitive files modified:** [build.gradle, CI config, migration, etc.]
->
-> Proceed to create PR? (yes / no — let me review)
+> Proceed to create PR? (yes / no)
 
-## Step 13: Create Pull Request
+### 6c: Create Pull Request
 
-Ask the user:
+Ask:
 > Create a Pull Request? (yes / no)
 
 If yes:
 **REQUIRED:** Use the `android:creating-pr` skill.
 
-This will:
-- Check for uncommitted changes
-- Determine and confirm base branch
-- Push branch if needed
-- Confirm PR title, reviewers, labels, draft status
-- Create PR with Jira-prefixed title, summary, and test plan
-- Return the PR URL
+If `android:write-tests` was run in this session, pass coverage tables to the PR body.
 
-If no: skip to Step 14.
-
-## Step 14: Log Work Time
+### 6d: Log Work Time
 
 **REQUIRED:** Use the `android:jira-worklogging` skill.
 
-This will:
-- Show existing worklogs
-- Ask if user wants to log time
-- Accept time input with optional description
-- Submit worklog to Jira
-- Show updated totals
+### 6e: Transition to In Review
 
-## Step 15: Transition to In Review
+**If PR was created:** Auto-transition to "In Review" using the `android:jira-transitioning` skill.
 
-**Only if a PR was created in Step 13.**
+**If no PR:** Ask if user still wants to transition.
 
-**REQUIRED:** Use the `android:jira-transitioning` skill.
-
-Target status: **In Review**
-
-If no PR was created, ask:
-> No PR was created. Still move ticket to "In Review"? (yes / no — keep as In Progress)
-
-## Step 16: Final Summary
-
-Present the completion summary with all actions taken:
+### 6f: Final Summary
 
 > **Task Complete: [TICKET-ID] — [Summary]**
 >
 > | Action | Result |
 > |--------|--------|
-> | Verification | All passed (Build, Tests, Lint) |
+> | Branch | [branch-name] |
+> | Verification | All passed (Tests, Lint, Review, Spec) |
 > | PR | [URL] or Skipped |
 > | Work Logged | [time] or Skipped |
-> | Status | [In Review / In Progress / unchanged] |
+> | Status | [In Review / In Progress] |
 >
 > **PR URL:** [clickable URL]
 
@@ -360,7 +292,7 @@ Present the completion summary with all actions taken:
 - Offer to retry or skip the step
 - Track which steps were completed
 
-**If user wants to abort mid-flow:**
+**If user wants to abort:**
 > Task aborted. Current state:
 > - Jira status: [status — was it changed?]
 > - Branch: [was a branch created?]
@@ -370,12 +302,3 @@ Present the completion summary with all actions taken:
 > - Work logged: [Xh / not logged]
 >
 > You can resume with `/android:finish-task` later.
-
-**If verification keeps failing:**
-After 3 failed verification loops:
-> Verification has failed [N times]. Options:
-> - Continue fixing
-> - Skip verification and create PR as draft (mark as WIP)
-> - Abort and come back later
-
-Only allow draft PR on repeated failures — never skip verification for a ready-for-review PR.
