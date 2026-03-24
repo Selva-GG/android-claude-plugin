@@ -74,7 +74,7 @@ fi
 ```
 
 If cache doesn't exist or is >7 days old:
-> Cache is stale or missing. Run `/android:refresh-cache` first? (yes / no — proceed without cache)
+**Auto-run** the `android:refresh-cache` skill inline. Do not ask — just run it. If it fails, proceed without cache and use runtime scan only.
 
 If cache exists, read ONLY the cache files relevant to the Jira ticket keywords. Do not load all 7 files — match keywords from the ticket to determine which cache files are useful:
 - "repository", "data", "storage" → `repository-map.md`, `model-map.md`
@@ -177,14 +177,30 @@ If branch exists: offer to switch to it.
 
 **Create new branch:**
 - Format: `<TICKET-ID>-<kebab-case-summary>` (truncated to ~60 chars)
-- **Base branch detection:**
-  - If subtask with parent ticket: look for parent branch, use as base
-  - Otherwise: use latest `dev` or `main`
+- **Base branch detection (in order):**
+  1. If user specified a base branch in arguments: use that
+  2. If subtask with parent ticket: search `git branch -r --list "*<PARENT-TICKET-ID>*"` for parent branch
+  3. Search for feature branches: `git branch -r --list "*phase*"`, `*feature*`
+  4. Otherwise: use latest `dev` (or `main` if no `dev`)
 
 ```bash
 git fetch origin <base-branch>
 git checkout -b <branch-name> origin/<base-branch>
 ```
+
+### Step 3e: Verify Build Prerequisites
+
+Before implementation, verify the project builds:
+```bash
+./gradlew compileDebugKotlin 2>&1 | tail -5
+```
+
+**If build fails:**
+- Check for missing `google-services.json` → ask user to provide it
+- Check for GitHub Packages auth (401 errors) → check `local.properties` for `gpr.user`/`gpr.key`
+- Check for other dependency issues → show error, ask user to fix
+
+**Do not proceed to implementation until the build compiles.**
 
 ---
 

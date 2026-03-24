@@ -15,6 +15,26 @@ This skill receives context from Step 1 gather agents:
 - **Figma screenshots** — optional, only if design references were found
 - **Cache data** — selected Layer 2 cache files relevant to the Jira ticket
 
+## Step 0: Detect Task Type
+
+Before loading cache, determine the type of task:
+
+**If Jira description is empty or title contains "test", "fix", "failing", "broken":**
+This is likely a **maintenance/fix task**, not a feature. Instead of cache + dedup, do:
+
+1. Run the relevant diagnostic command to discover scope:
+   - "fix tests" / "failing tests" → `./gradlew :app:compileDebugUnitTestKotlin 2>&1 | grep "^e:"` to find broken test files
+   - "fix build" → `./gradlew compileDebugKotlin 2>&1 | grep "^e:"` to find compilation errors
+   - "fix lint" → `./gradlew detekt 2>&1` to find lint violations
+
+2. Present the discovered scope to the user (e.g., "Found 17 broken test files")
+
+3. Categorize the issues and produce a fix plan (instead of a layer-by-layer implementation plan)
+
+4. Skip Steps 1-4 below (cache, procedures, runtime scan, dedup) — go straight to Step 5 (produce plan)
+
+**If Jira has a clear description:** Continue with normal flow below.
+
 ## Step 1: Load Relevant Cache Files
 
 Based on Jira ticket keywords, load ONLY the cache files that are relevant. Do not load all 7 files.

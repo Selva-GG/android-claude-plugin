@@ -38,6 +38,16 @@ Create cache directory:
 mkdir -p <project-root>/.claude/cache
 ```
 
+## IMPORTANT: File Writing
+
+Subagents may not have Write tool permissions. **Always use Bash with heredoc** to write cache files:
+```bash
+cat > "<project-root>/.claude/cache/filename.md" << 'ENDOFFILE'
+content here
+ENDOFFILE
+```
+Do NOT use the Write tool for cache files — it may be denied in subagent contexts.
+
 ## Step 1: Generate component-catalog.md
 
 Scan `$SRC_ROOT/features/common/` for all Composable functions.

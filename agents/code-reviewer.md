@@ -44,6 +44,8 @@ For EACH changed `.kt` file, check these rules:
 | 15 | No manual `CoroutineScope()` | grep for `CoroutineScope(` | CRITICAL |
 | 16 | No `SimpleDateFormat` | grep for `SimpleDateFormat` | WARNING |
 | 17 | Methods ≤ 60 lines, classes ≤ 600 lines | Count lines | WARNING |
+| 18 | Data class with nullable field valid for only 1 enum value → suggest sealed class | Check data classes with nullable fields + enum fields | INFO |
+| 19 | `ioDispatcher: CoroutineDispatcher` should be `@ApplicationScope appScope: CoroutineScope` | Check service constructors | WARNING |
 
 ### Step 3: Deep Checks (load procedure files — thorough)
 

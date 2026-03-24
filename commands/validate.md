@@ -142,4 +142,14 @@ When all checks pass (or user chooses to skip remaining warnings):
 > | code-reviewer | 0 critical, 0 warnings |
 > | spec-checker | N/N criteria met |
 >
+> **Test Progress** (before → after this task):
+> | Metric | Before | After | Delta |
+> |--------|--------|-------|-------|
+> | Tests compiling | X | Y | +Z |
+> | Tests passing | X | Y | +Z |
+> | Test files | X | Y | +Z |
+>
+> To get "before" numbers: check the base branch test count at the start of the task.
+> To get "after" numbers: run `./gradlew :app:testDebugUnitTest` and count from test results XML.
+>
 > Ready for finalization (PR, worklog, Jira transition).

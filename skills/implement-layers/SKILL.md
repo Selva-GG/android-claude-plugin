@@ -59,6 +59,15 @@ Domain → Data → Core → Service → ViewModel → UI
 - `procedures/data/networking-api.md` (if touching Retrofit/API)
 - `procedures/data/services-repositories.md` (for repository patterns)
 
+**BEFORE writing any code:** Read 1-2 existing examples of the same type you're about to create. This ensures you match the exact patterns used in the codebase:
+- Creating a Room Entity? → Read an existing entity (e.g., `AccountEntity.kt`)
+- Creating a DAO? → Read an existing DAO (e.g., `AccountDao.kt`)
+- Creating a DataStore? → Read an existing DataStore (e.g., `GoalAlertDataStore.kt`)
+- Creating a Repository? → Read an existing Repository (e.g., `AccountFlagRepository.kt`)
+- Creating a proto file? → Read an existing proto (e.g., `goal_alert.proto`)
+
+This is mandatory — do NOT skip. Pattern mismatches (wrong base class, wrong import style, wrong annotation) cause compilation failures.
+
 **What to create/modify:**
 - `data/storage/db/entity/` — Room entities (`@Entity`)
 - `data/storage/db/dao/` — Room DAOs (`@Dao`)
