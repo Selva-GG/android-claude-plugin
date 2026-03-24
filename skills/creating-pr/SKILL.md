@@ -305,7 +305,32 @@ The worklog skill will append `PR: <PR URL>` to the auto-generated description. 
 - **Jira:** Always include ticket ID and summary
 - **Test plan:** Concrete checklist from acceptance criteria — not vague "test it works"
 - **Changes:** Auto-generated file/module summary
-- **Coverage:** Include JaCoCo coverage tables from session context if `android:write-tests` was run — one table per tested class
+- **Coverage:** If the PR includes test files, ALWAYS include a coverage summary table. Use this exact format:
+
+```markdown
+## Coverage
+
+| Category | Total | Tested | Untested | Class Coverage | Tests |
+|----------|-------|--------|----------|---------------|-------|
+| Repository | 15 | 15 | 0 | 100% ✅ | 396 |
+| Reducer | 6 | 6 | 0 | 100% ✅ | 107 |
+| Service | 30 | 26 | 4 | 86% ⚡ | 972 |
+| ViewModel | 39 | 39 | 0 | 100% ✅ | 1029 |
+| Utility | 2 | 2 | 0 | 100% ✅ | 30 |
+| **Total** | **92** | **88** | **4** | **95%** | **2534** |
+```
+
+**How to generate:** Count total testable classes (services, repositories, reducers, viewmodels, utilities) in source. Count which have corresponding `*Test.kt` files. Count `@Test` annotations per file. Use `python3` script to automate — never estimate manually.
+
+**Rules for this table:**
+- "Total" = all testable source classes (skip interfaces, base classes)
+- "Tested" = classes that have a `*Test.kt` file (case-insensitive match)
+- "Untested" = Total - Tested
+- "Class Coverage" = Tested / Total as percentage
+- "Tests" = count of `@Test` annotations across all test files in that category
+- Status: ≥95% = ✅, ≥80% = ⚡, <80% = ⚠️
+- If untested classes exist, list them below the table with line counts
+
 - **Screenshots:** Required for UI changes, explicitly mark N/A otherwise
 - **Breaking changes:** Call out explicitly if any
 
@@ -323,4 +348,6 @@ The worklog skill will append `PR: <PR URL>` to the auto-generated description. 
 | Adding PR URL as a Jira comment | Pass PR URL to worklog instead — keeps tracking in one place |
 | Vague PR summary bullets | Read actual git diff, not just --stat — explain WHY each change was made |
 | Outputting bare PR URL as plain text | Always use markdown link: `[PR #N — TICKET: Summary](url)` |
+| PR with test files but no coverage table | ALWAYS include coverage summary table when PR touches test files |
+| Estimating coverage numbers manually | ALWAYS use python3 script to count — never guess percentages |
 | Adding Co-Authored-By to commits | Never include Co-Authored-By trailers — plain commit messages only |
