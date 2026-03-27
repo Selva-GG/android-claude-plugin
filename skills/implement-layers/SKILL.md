@@ -56,6 +56,7 @@ Domain → Data → Core → Service → ViewModel → UI
 
 **Procedures to load:**
 - `procedures/data/storage.md` (if touching Room/DataStore)
+- `procedures/data/room-patterns.md` (if writing Room queries returning PopulatedActiveEntry)
 - `procedures/data/networking-api.md` (if touching Retrofit/API)
 - `procedures/data/services-repositories.md` (for repository patterns)
 
@@ -135,6 +136,12 @@ This is mandatory — do NOT skip. Pattern mismatches (wrong base class, wrong i
 - Log with `AppLog` using a `TAG` constant in companion object
 - Keep methods ≤ 60 lines, classes ≤ 600 lines (detekt enforces)
 
+**Sample data check:**
+If the service connects to a data source that doesn't have real data yet (e.g., new product type, new API), use AskUserQuestion:
+> "No real data source connected for [feature]. Add sample data in the Repository with a USE_SAMPLE_DATA flag for testing? (yes / no)"
+
+If yes: add sample data in the **Repository** layer (not ViewModel or Composable). Use a `companion object { var USE_SAMPLE_DATA = true }` flag. Sample data must match DAO return types exactly.
+
 **Tests — write immediately after this layer:**
 - Mock all injected repositories and services
 - Test business logic, orchestration, error handling, fallback behavior
@@ -149,6 +156,7 @@ This is mandatory — do NOT skip. Pattern mismatches (wrong base class, wrong i
 
 **Procedures to load:**
 - `procedures/ui/mvi-pattern.md`
+- `procedures/shared/hilt-patterns.md` (for injection order and onDependenciesReady)
 
 **What to create/modify:**
 - `features/<feature>/viewmodel/<Feature>ViewModel.kt` — extends `BaseIntentViewModel`
@@ -162,6 +170,8 @@ This is mandatory — do NOT skip. Pattern mismatches (wrong base class, wrong i
 - Reducer is a pure function: `(State, Intent) → State?` — no side effects, no coroutines
 - Side effects (API calls, navigation) go in ViewModel's `handleIntent()`, not in Reducer
 - Never inject `NavigationService` or `DialogQueueService` — they're in `BaseViewModel`
+- **Never access `BaseViewModel` `lateinit` fields in `init {}`** — use `onDependenciesReady()` override instead
+- Don't duplicate-inject services already in `BaseViewModel` — access via `onDependenciesReady()`
 - Use `@AssistedInject` + `@AssistedFactory` for ViewModels with runtime parameters
 
 **Tests — write immediately after this layer:**

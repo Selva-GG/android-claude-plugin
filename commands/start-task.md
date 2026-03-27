@@ -8,6 +8,8 @@ argument-hint: "[optional: TICKET-ID]"
 
 You are beginning work on a Jira ticket. Follow the 6-step orchestrator pipeline. Every state change requires user confirmation. Do not skip steps.
 
+**HARD RULE — User Prompts:** For ALL questions that require user input (confirmations, choices, yes/no), use the `AskUserQuestion` tool. Do NOT embed questions as inline text in responses — they get lost in output. Fallback to inline text ONLY if `AskUserQuestion` is unavailable.
+
 **HARD RULE — No MCP Tools:** Never use `mcp__claude_ai_Atlassian__*` or any MCP Atlassian tools. All Jira operations MUST use ACLI (`acli`), curl + REST API, or `gh` CLI. If ACLI is not authenticated, auto-run the `android:jira-setup` skill inline — do NOT fall back to MCP.
 
 ---
